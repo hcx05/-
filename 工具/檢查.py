@@ -506,6 +506,55 @@ def check_event_desc():
                 add('事件描述', f'{v} {eid} 在時間線但沒有事件描述')
 
 
+# 24. 紀錄一致性:個性轉變的歲數、武學起點戰力
+def check_record_consistency(v):
+    ap = f'故事線/{v}/年齡表.md'
+    tl = f'故事線/{v}/時間線.md'
+    if not (os.path.exists(ap) and os.path.exists(tl)):
+        return
+    ages = age_table(ap)
+    when, head = {}, None
+    for line in read(tl).split('\n'):
+        if not line.startswith('|'):
+            continue
+        c = [x.strip() for x in line.strip('|').split('|')]
+        if c[0] == '序':
+            head = c
+        elif head and len(c) == len(head) and c[0].isdigit():
+            r = dict(zip(head, c))
+            when[r['事件 ID']] = label_months(r['相對時間'].split('–')[0])
+    snap = ''
+    s = sorted(glob.glob('狀態/*結束'))
+    if s:
+        snap = read(f'{s[-1]}/角色狀態.md')
+    for n, r in roots().items():
+        # 個性轉變:時間欄的「(N 歲)」須等於年齡表起點加上滿年數
+        pf = f'{r}/成長/個性/{v}.md'
+        if os.path.exists(pf) and n in ages and re.fullmatch(r'\d+', ages[n][1]):
+            for blk in re.split(r'\n(?=## 轉變)', read(pf)):
+                e = re.search(r'\*\*觸發事件\*\*:(\S+)', blk)
+                a = re.search(r'\*\*時間\*\*:.*?\((\d+) 歲\)', blk)
+                if e and a and e.group(1) in when:
+                    exp = int(ages[n][1]) + int(when[e.group(1)] // 12 + 1e-9)
+                    if int(a.group(1)) != exp:
+                        add('個性', f'{pf} {e.group(1)} 的歲數 {a.group(1)},依年齡表應為 {exp}')
+        # 武學:第一個時間段的戰力須等於設定檔(男女主則等於上一卷結束的狀態表)
+        wf = f'{r}/成長/武學/{v}.md'
+        if os.path.exists(wf):
+            m = re.search(r'\*\*戰力\*\*:L(\d+)', read(wf))
+            base = None
+            sf = f'{r}/設定/{v}.md'
+            if os.path.exists(sf):
+                b = re.search(r'\*\*戰力\*\*:L(\d+)', read(sf))
+                base = b.group(1) if b else None
+            elif n in ('男主', '女主'):
+                b = re.search(rf'^\| {n} \| [^|]+\| [^|]+\| [^|]+\| [^|]+\| L(\d+)', snap, re.M)
+                base = b.group(1) if b else None
+            # 首次出場較晚的少年可能已有進境,容許 0 至 +3;低於起點或超過 +3 視為不一致
+            if m and base and not (int(base) <= int(m.group(1)) <= int(base) + 3):
+                add('戰力', f'{wf} 起點戰力 L{m.group(1)} 與設定/狀態表 L{base} 不一致(容許 +0 至 +3)')
+
+
 # 23. 階段 D:紀錄對照標「狀態:已結案」後,啟用事件覆蓋、感情對稱、個性轉變與佔位符檢查
 def check_stage_d():
     for v, pre in (('第一部', 'P1'), ('第二部', 'P2'), ('第三部', 'P3')):
@@ -518,6 +567,7 @@ def check_stage_d():
         for f in glob.glob(f'角色/**/成長/**/{v}.md', recursive=True):
             if '(待填)' in read(f):
                 add('紀錄', f'{f} 仍有「(待填)」')
+        check_record_consistency(v)
 
 
 def check_tags_all():

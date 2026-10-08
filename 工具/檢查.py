@@ -317,6 +317,14 @@ def check_tags(vol_dir='故事線/序卷'):
 
 
 
+def check_tags_all():
+    for v in ('序卷', '第一部', '第二部', '第三部'):
+        d = f'故事線/{v}'
+        # 標籤尚未填寫(含「待填」)的卷視為仍在 A4,不檢查
+        if os.path.exists(f'{d}/時間線.md') and '待填' not in read(f'{d}/時間線.md'):
+            check_tags(d)
+
+
 # 15. 個性轉變記錄
 def check_personality(vol_dir='故事線/序卷', volume='序卷'):
     ev = events(vol_dir, 'PRO')
@@ -422,7 +430,7 @@ def check_timeline_skeleton():
 
 
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton):
     fn()
 
 if problems:

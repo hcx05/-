@@ -258,8 +258,36 @@ def check_baseline():
                     add('戰力', f'戰力基準 {c[0]} {c[1]} 與狀態表 {n} {lv} 不一致')
 
 
+
+# 13. 章節大綱與事件描述的章節欄一致
+def check_chapters(vol_dir='故事線/序卷'):
+    d = f'{vol_dir}/章節'
+    if not os.path.isdir(d):
+        return
+    src = read(f'{vol_dir}/事件描述.md')
+    ev_ch = {}
+    for sec in re.split(r'\n(?=### )', src):
+        m = re.match(r'### (\w+-\d+) ', sec)
+        c = re.search(r'- \*\*章節\*\*:(.*)', sec)
+        if m and c:
+            ev_ch[m.group(1)] = c.group(1).strip().replace(' ', '')
+    seen = {}
+    for f in sorted(glob.glob(f'{d}/[0-9]*.md')):
+        t = read(f)
+        title = re.match(r'# (.*?) · ', t).group(1).replace(' ', '')
+        m = re.search(r'- \*\*對應事件\*\*:(.*)', t)
+        for eid in re.findall(r'\w+-\d+', m.group(1) if m else ''):
+            seen[eid] = title
+    for eid, ch in ev_ch.items():
+        if seen.get(eid) != ch:
+            add('章節', f'{eid} 事件描述章節為「{ch}」,章節大綱為「{seen.get(eid)}」')
+    for eid in seen:
+        if eid not in ev_ch:
+            add('章節', f'章節大綱引用不存在的事件 {eid}')
+
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters):
     fn()
 
 if problems:

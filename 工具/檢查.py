@@ -56,9 +56,13 @@ def check_symmetry(volume='序卷'):
                 continue
             for x in ALIAS.get(t, [t]):
                 pairs.add((n, x))
+    dead = set()
+    snap = sorted(glob.glob('狀態/*結束'))
+    if snap:
+        dead = set(re.findall(r'^\| (\S+) \| 已故\(', read(f'{snap[-1]}/角色狀態.md'), re.M))
     for a, b in sorted(pairs):
-        if b in rs and (b, a) not in pairs:
-            add('感情對稱', f'{a}→{b} 有,但 {b}→{a} 沒有')
+        if b in rs and b not in dead and (b, a) not in pairs:
+            add('感情對稱', f'{a}→{b} 有,但 {b}→{a} 沒有({volume})')
 
 
 # 3. 戰力上限
@@ -108,13 +112,18 @@ def check_events(volume='序卷', volume_dir='故事線/序卷', prefix='PRO'):
     if snap:
         text = read(f'{snap[-1]}/角色狀態.md')
         for m in re.finditer(r'^\| (\S+) \| 已故\((\w+-\d+)\)', text, re.M):
-            who, dead = m.group(1), int(m.group(2).split('-')[1])
+            who, death = m.group(1), m.group(2)
             for eid, names in ev.items():
-                if who in names and int(eid.split('-')[1]) > dead:
-                    add('已故', f'{who} 於 {eid} 出場,晚於死亡事件 {m.group(2)}')
-    # 伏筆登記簿事件存在
+                if who not in names:
+                    continue
+                # 死於前一卷者,本卷任何事件都不得出場;同卷者比較事件編號
+                order = ['PRO', 'P1', 'P2', 'P3']
+                dv, ev_ = order.index(death.split('-')[0]), order.index(prefix)
+                if dv < ev_ or (dv == ev_ and int(eid.split('-')[1]) > int(death.split('-')[1])):
+                    add('已故', f'{who} 於 {eid} 出場,晚於死亡事件 {death}')
+    # 伏筆登記簿事件存在(序卷)
     tp = '狀態/伏筆登記簿.md'
-    if os.path.exists(tp):
+    if prefix == 'PRO' and os.path.exists(tp):
         for m in re.finditer(r'\b(PRO-\d+)\b', read(tp)):
             if m.group(1) not in ev:
                 add('伏筆', f'伏筆登記簿引用不存在的事件 {m.group(1)}')
@@ -139,21 +148,24 @@ def check_ratio():
             tot[k] = tot.get(k, 0) + v
 
 
-# 8. 角色狀態 L 與設定一致
+# 8. 角色狀態 L 與成長紀錄一致(以最新快照所屬卷的武學紀錄最後一段為準)
 def check_state_power():
     snap = sorted(glob.glob('狀態/*結束'))
     if not snap:
         return
+    vol = os.path.basename(snap[-1])[:-2]
+    rs = roots()
     for line in read(f'{snap[-1]}/角色狀態.md').split('\n'):
         cells = [c.strip() for c in line.strip('|').split('|')]
         if len(cells) < 6 or not cells[5].startswith('L'):
             continue
         name, lv = cells[0], cells[5]
-        p = f'角色/主要角色/{name}/設定/第一部.md'
-        if os.path.exists(p):
-            m = re.search(r'\*\*戰力\*\*:(L\d+)', read(p))
-            if m and m.group(1) != lv:
-                add('戰力', f'{name} 狀態表 {lv} 與第一部設定 {m.group(1)} 不一致')
+        for p in (f'{rs[name]}/成長/武學/{vol}.md' if name in rs else '', f'角色/主要角色/{name}/設定/{vol}.md'):
+            if p and os.path.exists(p):
+                ls = re.findall(r'\*\*戰力\*\*:(L\d+)', read(p))
+                if ls and ls[-1] != lv:
+                    add('戰力', f'{name} 狀態表 {lv} 與 {p} 最後一段 {ls[-1]} 不一致')
+                break
 
 
 # 9. ID 對照
@@ -223,7 +235,10 @@ def snapshot_text():
     return read(f'{snap[-1]}/角色狀態.md') if snap else ''
 
 
-def check_ages(vol_dir='故事線/序卷'):
+def check_ages(vol_dir=None):
+    snaps = sorted(glob.glob('狀態/*結束'))
+    if vol_dir is None:
+        vol_dir = '故事線/' + os.path.basename(snaps[-1])[:-2] if snaps else '故事線/序卷'
     p = f'{vol_dir}/年齡表.md'
     if not os.path.exists(p):
         return
@@ -247,9 +262,13 @@ def check_baseline():
         c = [x.strip() for x in line.strip('|').split('|')]
         if len(c) >= 6 and re.fullmatch(r'L\d+', c[5]):
             state[c[0]] = c[5]
+    skip = False
     for line in read('武學設定/總綱/戰力基準.md').split('\n'):
+        if line.startswith('#'):
+            skip = '序卷結束時點' in line  # 該段為起點值,進境見各卷成長紀錄
+            continue
         c = [x.strip() for x in line.strip('|').split('|')]
-        if len(c) >= 2 and re.fullmatch(r'L\d+', c[1]):
+        if not skip and len(c) >= 2 and re.fullmatch(r'L\d+', c[1]):
             keys = {c[0]}
             m = re.search(r'\((.*?)\)', c[0])
             if m:
@@ -262,6 +281,12 @@ def check_baseline():
 
 
 # 13. 章節大綱與事件描述的章節欄一致
+def check_chapters_all():
+    for v in ('序卷', '第一部', '第二部', '第三部'):
+        if os.path.exists(f'故事線/{v}/事件描述.md'):
+            check_chapters(f'故事線/{v}')
+
+
 def check_chapters(vol_dir='故事線/序卷'):
     d = f'{vol_dir}/章節'
     if not os.path.isdir(d):
@@ -317,9 +342,257 @@ def check_tags(vol_dir='故事線/序卷'):
 
 
 
+# 19. 第一部年齡表:與序卷銜接、與設定檔及時間線一致
+def age_table(path):
+    rows = {}
+    for line in read(path).split('\n'):
+        c = [x.strip() for x in line.strip('|').split('|')]
+        if len(c) >= 3 and c[0] and c[0] not in ('角色', '---', '滿歲', '時點'):
+            rows[c[0]] = c
+    return rows
+
+
+def label_months(label):
+    s = label.replace('初遇後', '').strip()
+    if '夜' in s and not re.search(r'\d', s):
+        return 0.0
+    m = 0.0
+    for n, unit in re.findall(r'(\d+)\s*(年|個月|日)', s):
+        m += int(n) * {'年': 12, '個月': 1, '日': 1 / 30}[unit]
+    return m
+
+
+def check_vol_ages(v='第一部', prev='序卷'):
+    p = f'故事線/{v}/年齡表.md'
+    if not os.path.exists(p):
+        return
+    cur = age_table(p)
+    old = age_table(f'故事線/{prev}/年齡表.md')
+    # 與前卷銜接:本卷起點 = 前卷結束
+    for name, c in cur.items():
+        if name in old and re.fullmatch(r'\d+', c[1]) and re.fullmatch(r'\d+', old[name][2]) and c[1] != old[name][2]:
+            add('年齡', f'{v}年齡表 {name} 起點 {c[1]} 與{prev}年齡表結束 {old[name][2]} 不一致')
+    # 設定檔
+    for name, c in cur.items():
+        f = f'角色/主要角色/{name}/設定/{v}.md'
+        if os.path.exists(f) and re.fullmatch(r'\d+', c[1]):
+            m = re.search(r'\*\*(?:初始)?年齡\*\*:約?\s*(\d+)', read(f))
+            if m and m.group(1) != c[1]:
+                add('年齡', f'{f} 年齡 {m.group(1)} 與年齡表起點 {c[1]} 不一致')
+    # 時間線:歲數 = 起點 + 滿年數
+    tl = f'故事線/{v}/時間線.md'
+    if os.path.exists(tl) and '男主' in cur and re.fullmatch(r'\d+', cur['男主'][1]):
+        base = int(cur['男主'][1])
+        head = None
+        for line in read(tl).split('\n'):
+            if not line.startswith('|'):
+                continue
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if c[0] == '序':
+                head = c
+            elif head and len(c) == len(head) and c[0].isdigit():
+                r = dict(zip(head, c))
+                parts = r['相對時間'].split('–')
+                ages = []
+                for part in parts:
+                    a = base + int(label_months(part) // 12 + 1e-9)
+                    if not ages or ages[-1] != a:
+                        ages.append(a)
+                exp = '–'.join(str(a) for a in ages)
+                for who in ('男主', '女主'):
+                    if r[who] != exp:
+                        add('年齡', f"{v}時間線 {r['事件 ID']} {who}歲數 {r[who]},依年齡表應為 {exp}")
+
+
+# 20. 凍結紀錄:時間線的事件 ID、相對時間、章節不得與凍結紀錄不一致
+def check_freeze():
+    for v in ('第一部', '第二部', '第三部'):
+        fz, tl = f'故事線/{v}/凍結.md', f'故事線/{v}/時間線.md'
+        if not (os.path.exists(fz) and os.path.exists(tl)):
+            continue
+        frozen = {}
+        for line in read(fz).split('\n'):
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if len(c) == 6 and re.fullmatch(r'P\d-\d+', c[0]):
+                frozen[c[0]] = c
+        head = None
+        live = {}
+        for line in read(tl).split('\n'):
+            if not line.startswith('|'):
+                continue
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if c[0] == '序':
+                head = c
+            elif head and len(c) == len(head) and c[0].isdigit():
+                r = dict(zip(head, c))
+                live[r['事件 ID']] = r
+        for eid, r in live.items():
+            if eid not in frozen:
+                add('凍結', f'{v} {eid} 不在凍結紀錄,請走變更傳播並更新 {fz}')
+            elif frozen[eid][1] != r['相對時間'] or frozen[eid][2] != r['章節']:
+                add('凍結', f"{v} {eid} 時間或章節已與凍結紀錄不同(凍結:{frozen[eid][1]}/{frozen[eid][2]};現在:{r['相對時間']}/{r['章節']})")
+        for eid in frozen:
+            if eid not in live:
+                add('凍結', f'{v} {eid} 在凍結紀錄中,但時間線已無此事件(事件 ID 不得刪除或重編)')
+
+
+# 21. 缺口掃描:已結案的卷,凍結紀錄的出場者都必須有檔案(或登記待建)
+def check_gaps():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('缺口掃描', '工具/缺口掃描.py')
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for v in ('第一部', '第二部', '第三部'):
+        rp = f'故事線/{v}/缺口掃描.md'
+        if not (os.path.exists(rp) and os.path.exists(f'故事線/{v}/凍結.md')):
+            continue
+        if '狀態:已結案' not in read(rp):
+            continue
+        uses, gaps = mod.scan(v)
+        labels = {'角色': '缺角色資料夾', '角色設定': f'缺 設定/{v}.md', '勢力': '缺勢力檔', '場景': '缺場景建模且未登記待建'}
+        for k, label in labels.items():
+            for n, ev in gaps[k]:
+                add('缺口', f'{v} {label}:{n}(首見 {ev[0]})')
+
+
+# 22. 事件描述:與時間線逐項一致,出場者與場景與凍結紀錄一致
+def check_event_desc():
+    for v, pre in (('第一部', 'P1'), ('第二部', 'P2'), ('第三部', 'P3')):
+        ed, tl, fz = (f'故事線/{v}/{x}.md' for x in ('事件描述', '時間線', '凍結'))
+        if not (os.path.exists(ed) and os.path.exists(tl) and os.path.exists(fz)):
+            continue
+        live, head = {}, None
+        for line in read(tl).split('\n'):
+            if not line.startswith('|'):
+                continue
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if c[0] == '序':
+                head = c
+            elif head and len(c) == len(head) and c[0].isdigit():
+                r = dict(zip(head, c))
+                live[r['事件 ID']] = r
+        frozen = {}
+        for line in read(fz).split('\n'):
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if len(c) == 6 and re.fullmatch(r'P\d-\d+', c[0]):
+                frozen[c[0]] = c
+        seen = set()
+        for sec in re.split(r'\n(?=### )', read(ed)):
+            m = re.match(rf'### ({pre}-\d+) (.*)', sec)
+            if not m:
+                continue
+            eid, name = m.group(1), m.group(2).strip()
+            seen.add(eid)
+            if eid not in live:
+                add('事件描述', f'{v} {eid} 不在時間線')
+                continue
+            r = live[eid]
+            get = lambda k: (re.search(rf'- \*\*{k}\*\*:(.*)', sec) or [None, ''])[1].strip()
+            for k, tk in (('序號', '序'), ('時間', '相對時間'), ('章節', '章節')):
+                if get(k) != r[tk]:
+                    add('事件描述', f'{v} {eid} {k}「{get(k)}」與時間線「{r[tk]}」不一致')
+            if name != r['事件名稱']:
+                add('事件描述', f'{v} {eid} 標題與時間線事件名稱不一致')
+            if not get('描述') or len(get('描述')) > 120:
+                add('事件描述', f'{v} {eid} 描述缺漏或超過 120 字(應為一至兩句)')
+            cast = get('出場角色')
+            roles = set(re.findall(r'\[([^\]]+)\]\(\.\./\.\./角色/', cast))
+            orgs = set(re.findall(r'\(\.\./\.\./勢力/([^)]+)\.md\)', cast))
+            sc = get('場景')
+            m2 = re.search(r'場景設定/([^/]+)/建模描述', sc) or re.search(r'待建:(.+)', sc)
+            scene = m2.group(1).strip() if m2 else ''
+            z = frozen.get(eid)
+            if not z:
+                add('事件描述', f'{v} {eid} 不在凍結紀錄')
+                continue
+            fr = {x for x in z[3].split('、') if x}
+            fo = {x for x in z[4].split('、') if x and x != '—'}
+            if roles != fr:
+                add('事件描述', f'{v} {eid} 出場角色與凍結紀錄不一致(差異:{sorted(roles ^ fr)})')
+            if orgs != fo:
+                add('事件描述', f'{v} {eid} 出場勢力與凍結紀錄不一致(差異:{sorted(orgs ^ fo)})')
+            if scene != z[5]:
+                add('事件描述', f'{v} {eid} 場景「{scene}」與凍結紀錄「{z[5]}」不一致')
+        for eid in live:
+            if eid not in seen:
+                add('事件描述', f'{v} {eid} 在時間線但沒有事件描述')
+
+
+# 24. 紀錄一致性:個性轉變的歲數、武學起點戰力
+def check_record_consistency(v):
+    ap = f'故事線/{v}/年齡表.md'
+    tl = f'故事線/{v}/時間線.md'
+    if not (os.path.exists(ap) and os.path.exists(tl)):
+        return
+    ages = age_table(ap)
+    when, head = {}, None
+    for line in read(tl).split('\n'):
+        if not line.startswith('|'):
+            continue
+        c = [x.strip() for x in line.strip('|').split('|')]
+        if c[0] == '序':
+            head = c
+        elif head and len(c) == len(head) and c[0].isdigit():
+            r = dict(zip(head, c))
+            when[r['事件 ID']] = label_months(r['相對時間'].split('–')[0])
+    snap = ''
+    prev = {'第一部': '序卷', '第二部': '第一部', '第三部': '第二部'}.get(v)
+    if prev and os.path.exists(f'狀態/{prev}結束/角色狀態.md'):
+        snap = read(f'狀態/{prev}結束/角色狀態.md')  # 男女主的起點戰力取上一卷結束時點
+    for n, r in roots().items():
+        # 個性轉變:時間欄的「(N 歲)」須等於年齡表起點加上滿年數
+        pf = f'{r}/成長/個性/{v}.md'
+        if os.path.exists(pf) and n in ages and re.fullmatch(r'\d+', ages[n][1]):
+            for blk in re.split(r'\n(?=## 轉變)', read(pf)):
+                e = re.search(r'\*\*觸發事件\*\*:(\S+)', blk)
+                a = re.search(r'\*\*時間\*\*:.*?\((\d+) 歲\)', blk)
+                if e and a and e.group(1) in when:
+                    exp = int(ages[n][1]) + int(when[e.group(1)] // 12 + 1e-9)
+                    if int(a.group(1)) != exp:
+                        add('個性', f'{pf} {e.group(1)} 的歲數 {a.group(1)},依年齡表應為 {exp}')
+        # 武學:第一個時間段的戰力須等於設定檔(男女主則等於上一卷結束的狀態表)
+        wf = f'{r}/成長/武學/{v}.md'
+        if os.path.exists(wf):
+            m = re.search(r'\*\*戰力\*\*:L(\d+)', read(wf))
+            base = None
+            sf = f'{r}/設定/{v}.md'
+            if os.path.exists(sf):
+                b = re.search(r'\*\*戰力\*\*:L(\d+)', read(sf))
+                base = b.group(1) if b else None
+            elif n in ('男主', '女主'):
+                b = re.search(rf'^\| {n} \| [^|]+\| [^|]+\| [^|]+\| [^|]+\| L(\d+)', snap, re.M)
+                base = b.group(1) if b else None
+            # 首次出場較晚的少年可能已有進境,容許 0 至 +3;低於起點或超過 +3 視為不一致
+            if m and base and not (int(base) <= int(m.group(1)) <= int(base) + 3):
+                add('戰力', f'{wf} 起點戰力 L{m.group(1)} 與設定/狀態表 L{base} 不一致(容許 +0 至 +3)')
+
+
+# 23. 階段 D:紀錄對照標「狀態:已結案」後,啟用事件覆蓋、感情對稱、個性轉變與佔位符檢查
+def check_stage_d():
+    for v, pre in (('第一部', 'P1'), ('第二部', 'P2'), ('第三部', 'P3')):
+        rp = f'故事線/{v}/紀錄對照.md'
+        if not (os.path.exists(rp) and '狀態:已結案' in read(rp)):
+            continue
+        check_events(volume=v, volume_dir=f'故事線/{v}', prefix=pre)
+        check_symmetry(v)
+        check_personality(f'故事線/{v}', v, pre)
+        for f in glob.glob(f'角色/**/成長/**/{v}.md', recursive=True):
+            if '(待填)' in read(f):
+                add('紀錄', f'{f} 仍有「(待填)」')
+        check_record_consistency(v)
+
+
+def check_tags_all():
+    for v in ('序卷', '第一部', '第二部', '第三部'):
+        d = f'故事線/{v}'
+        # 標籤尚未填寫(含「待填」)的卷視為仍在 A4,不檢查
+        if os.path.exists(f'{d}/時間線.md') and '待填' not in read(f'{d}/時間線.md'):
+            check_tags(d)
+
+
 # 15. 個性轉變記錄
-def check_personality(vol_dir='故事線/序卷', volume='序卷'):
-    ev = events(vol_dir, 'PRO')
+def check_personality(vol_dir='故事線/序卷', volume='序卷', prefix='PRO'):
+    ev = events(vol_dir, prefix)
     rs = roots()
     for n, r in rs.items():
         f = f'{r}/成長/個性/{volume}.md'
@@ -349,15 +622,82 @@ def check_completeness():
         if not os.path.exists(f'{d}/事件描述.md'):
             continue  # 尚未開發的卷不檢查
         need = [f'{d}/{x}' for x in ('大綱.md', '時間線.md', '節奏檢視.md', '吸引力分析.md', '年齡表.md', '章節/README.md')]
-        need += [f'狀態/{v}結束/{x}' for x in ('角色狀態.md', '地區與國家狀態.md', '勢力狀態.md', '世界狀態.md')]
-        need += ['狀態/秘密知情矩陣.md', '狀態/伏筆登記簿.md']
+        # 卷末快照屬階段 F:該卷已開始收尾(有 狀態/{卷}結束/ 資料夾)才要求齊全
+        if os.path.isdir(f'狀態/{v}結束') or v == '序卷':
+            need += [f'狀態/{v}結束/{x}' for x in ('角色狀態.md', '地區與國家狀態.md', '勢力狀態.md', '世界狀態.md')]
+            need += ['狀態/秘密知情矩陣.md', '狀態/伏筆登記簿.md']
         for f in need:
             if not os.path.exists(f):
                 add('完成度', f'{v} 缺少 {f}')
 
 
+# 17. 卷大綱與宏觀大綱的章級線別一致
+def chapter_tags(path):
+    tags = {}
+    for line in read(path).split('\n'):
+        m = re.match(r'- 第 (\d+)(?:–(\d+))? 章【(\w+)】', line)
+        if m:
+            a = int(m.group(1))
+            b = int(m.group(2) or a)
+            for n in range(a, b + 1):
+                tags[n] = m.group(3)
+    return tags
+
+
+def check_outline_tags():
+    for v, macro_path in (('第一部', '故事大綱/第一部_少年遊.md'), ('第二部', '故事大綱/第二部_離亂行.md'),
+                          ('第三部', '故事大綱/第三部_補天錄.md')):
+        p = f'故事線/{v}/大綱.md'
+        if not os.path.exists(p):
+            continue
+        macro, vol = chapter_tags(macro_path), chapter_tags(p)
+        for n in sorted(set(macro) | set(vol)):
+            if macro.get(n) != vol.get(n):
+                add('大綱', f'{v} 第 {n} 章線別:宏觀大綱為「{macro.get(n)}」,卷大綱為「{vol.get(n)}」')
+
+
+# 18. 時間線骨架:事件 ID 前綴與連號、章節覆蓋卷大綱的每一章
+def check_timeline_skeleton():
+    prefixes = {'第一部': 'P1', '第二部': 'P2', '第三部': 'P3'}
+    for v, pre in prefixes.items():
+        tl, outline = f'故事線/{v}/時間線.md', f'故事線/{v}/大綱.md'
+        if not (os.path.exists(tl) and os.path.exists(outline)):
+            continue
+        rows = []
+        head = None
+        for line in read(tl).split('\n'):
+            if not line.startswith('|'):
+                continue
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if c[0] == '序':
+                head = c
+            elif head and len(c) == len(head) and c[0].isdigit():
+                rows.append(dict(zip(head, c)))
+        nums = []
+        for r in rows:
+            m = re.fullmatch(rf'{pre}-(\d+)', r['事件 ID'])
+            if not m:
+                add('時間線', f"{v} 事件 ID「{r['事件 ID']}」不符合前綴 {pre}-")
+            else:
+                nums.append(int(m.group(1)))
+        if sorted(nums) != list(range(1, len(nums) + 1)):
+            add('時間線', f'{v} 事件 ID 不連號或重複')
+        covered = set()
+        for r in rows:
+            m = re.fullmatch(r'第 (\d+) 章', r['章節'])
+            if m:
+                covered.add(int(m.group(1)))
+            else:
+                add('時間線', f"{v} {r['事件 ID']} 章節欄「{r['章節']}」格式不符")
+        for n in chapter_tags(outline):
+            if n not in covered:
+                add('時間線', f'{v} 第 {n} 章沒有任何事件')
+        for n in covered - set(chapter_tags(outline)):
+            add('時間線', f'{v} 時間線引用卷大綱沒有的第 {n} 章')
+
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags, check_personality, check_completeness):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps, check_event_desc, check_stage_d):
     fn()
 
 if problems:

@@ -2,6 +2,8 @@
 """專案一致性檢查。用法:python3 工具/檢查.py(於專案根目錄執行)。有任何問題則結束碼為 1。"""
 import glob, os, re, sys, urllib.parse
 
+sys.dont_write_bytecode = True
+
 problems = []
 
 
@@ -338,8 +340,24 @@ def check_personality(vol_dir='故事線/序卷', volume='序卷'):
         add('個性', '角色狀態缺少「當前個性」欄')
 
 
+
+# 16. 卷完成度:必備檔案齊全
+def check_completeness():
+    vols = {'序卷': '序卷', '第一部': '第一部', '第二部': '第二部', '第三部': '第三部'}
+    for v in vols:
+        d = f'故事線/{v}'
+        if not os.path.exists(f'{d}/事件描述.md'):
+            continue  # 尚未開發的卷不檢查
+        need = [f'{d}/{x}' for x in ('大綱.md', '時間線.md', '節奏檢視.md', '吸引力分析.md', '年齡表.md', '章節/README.md')]
+        need += [f'狀態/{v}結束/{x}' for x in ('角色狀態.md', '地區與國家狀態.md', '勢力狀態.md', '世界狀態.md')]
+        need += ['狀態/秘密知情矩陣.md', '狀態/伏筆登記簿.md']
+        for f in need:
+            if not os.path.exists(f):
+                add('完成度', f'{v} 缺少 {f}')
+
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags, check_personality):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags, check_personality, check_completeness):
     fn()
 
 if problems:

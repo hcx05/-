@@ -154,7 +154,112 @@ def check_state_power():
                 add('戰力', f'{name} 狀態表 {lv} 與第一部設定 {m.group(1)} 不一致')
 
 
-for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power):
+# 9. ID 對照
+def check_ids():
+    t = read('設計規範/ID對照.md')
+    ids = {}
+    for m in re.finditer(r'^\| ((?:CHR|ORG|LOC)-\d+) \| (.*?) \| `(.*?)` \|', t, re.M):
+        i, name, path = m.groups()
+        if i in ids:
+            add('ID', f'{i} 重複')
+        ids[i] = (name, path)
+        if not os.path.exists(path):
+            add('ID', f'{i} 的路徑不存在:{path}')
+            continue
+        if i.startswith('CHR'):
+            if name in ('男主', '女主'):
+                files = [path + 'README.md']
+                pat = f'**ID**:{i}'
+            else:
+                files = glob.glob(path + '設定/*.md')
+                pat = f'> ID:{i}'
+                if not files:
+                    add('ID', f'{i} {name} 沒有設定檔')
+        elif i.startswith('ORG'):
+            files = [path]
+            pat = f'**ID**:{i}'
+        else:
+            files = [path + '建模描述.md']
+            pat = f'**ID**:{i}'
+        for f in files:
+            if os.path.exists(f) and pat not in read(f):
+                add('ID', f'{f} 缺少 {pat}')
+    # 反向:資料夾都已登記
+    reg = {v[1] for v in ids.values()}
+    for d in os.listdir('角色/主要角色'):
+        if os.path.isdir(f'角色/主要角色/{d}') and f'角色/主要角色/{d}/' not in reg:
+            add('ID', f'角色 {d} 未登記 ID')
+    for f in os.listdir('勢力'):
+        if f.endswith('.md') and f != 'README.md' and f'勢力/{f}' not in reg:
+            add('ID', f'勢力 {f} 未登記 ID')
+    for d in os.listdir('世界設定/場景設定'):
+        if os.path.isdir(f'世界設定/場景設定/{d}') and f'世界設定/場景設定/{d}/' not in reg:
+            add('ID', f'場景 {d} 未登記 ID')
+
+
+# 10. 術語表:避免寫法
+def check_terms():
+    t = read('設計規範/術語表.md')
+    bad = []
+    for line in t.split('\n'):
+        cells = [c.strip() for c in line.strip('|').split('|')]
+        if len(cells) == 3 and cells[2] and cells[0] not in ('標準寫法', '---'):
+            for w in cells[2].split('、'):
+                bad.append((w.strip(), cells[0]))
+    for f in glob.glob('**/*.md', recursive=True):
+        if f.endswith('設計規範/術語表.md'):
+            continue
+        txt = read(f)
+        for w, std in bad:
+            if w and w in txt:
+                add('術語', f'{f} 使用「{w}」,標準寫法為「{std}」')
+
+
+# 11. 年齡表與角色狀態
+def snapshot_text():
+    snap = sorted(glob.glob('狀態/*結束'))
+    return read(f'{snap[-1]}/角色狀態.md') if snap else ''
+
+
+def check_ages(vol_dir='故事線/序卷'):
+    p = f'{vol_dir}/年齡表.md'
+    if not os.path.exists(p):
+        return
+    ages = {}
+    for line in read(p).split('\n'):
+        c = [x.strip() for x in line.strip('|').split('|')]
+        if len(c) >= 3 and re.fullmatch(r'\d+', c[2]):
+            ages[c[0]] = int(c[2])
+    for line in snapshot_text().split('\n'):
+        c = [x.strip() for x in line.strip('|').split('|')]
+        if len(c) >= 5 and c[0] in ages:
+            m = re.search(r'\d+', c[4])
+            if m and int(m.group()) != ages[c[0]]:
+                add('年齡', f'{c[0]} 狀態表 {c[4]} 與年齡表 {ages[c[0]]} 不一致')
+
+
+# 12. 戰力基準人物表與狀態表
+def check_baseline():
+    state = {}
+    for line in snapshot_text().split('\n'):
+        c = [x.strip() for x in line.strip('|').split('|')]
+        if len(c) >= 6 and re.fullmatch(r'L\d+', c[5]):
+            state[c[0]] = c[5]
+    for line in read('武學設定/總綱/戰力基準.md').split('\n'):
+        c = [x.strip() for x in line.strip('|').split('|')]
+        if len(c) >= 2 and re.fullmatch(r'L\d+', c[1]):
+            keys = {c[0]}
+            m = re.search(r'\((.*?)\)', c[0])
+            if m:
+                keys.add(m.group(1))
+                keys.add(c[0].split('(')[0])
+            for n, lv in state.items():
+                if n in keys and lv != c[1]:
+                    add('戰力', f'戰力基準 {c[0]} {c[1]} 與狀態表 {n} {lv} 不一致')
+
+
+for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
+           check_ids, check_terms, check_ages, check_baseline):
     fn()
 
 if problems:

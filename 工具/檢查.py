@@ -306,8 +306,8 @@ def check_tags(vol_dir='故事線/序卷'):
             st = r['感情線'].split()[0]
             if st not in states:
                 add('標籤', f"{r['事件 ID']} 使用未登錄的感情線狀態「{st}」")
-            elif len(r['感情線'].split()) < 2:
-                add('標籤', f"{r['事件 ID']} 感情線缺少表情")
+            elif len(r['感情線'].split()) > 1:
+                add('標籤', f"{r['事件 ID']} 感情線只填狀態詞,不加其他符號或文字")
     text, _ = mod.render(vol_dir)
     f = f'{vol_dir}/節奏檢視.md'
     if not os.path.exists(f) or read(f) != text:

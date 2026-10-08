@@ -56,9 +56,13 @@ def check_symmetry(volume='序卷'):
                 continue
             for x in ALIAS.get(t, [t]):
                 pairs.add((n, x))
+    dead = set()
+    snap = sorted(glob.glob('狀態/*結束'))
+    if snap:
+        dead = set(re.findall(r'^\| (\S+) \| 已故\(', read(f'{snap[-1]}/角色狀態.md'), re.M))
     for a, b in sorted(pairs):
-        if b in rs and (b, a) not in pairs:
-            add('感情對稱', f'{a}→{b} 有,但 {b}→{a} 沒有')
+        if b in rs and b not in dead and (b, a) not in pairs:
+            add('感情對稱', f'{a}→{b} 有,但 {b}→{a} 沒有({volume})')
 
 
 # 3. 戰力上限
@@ -108,13 +112,16 @@ def check_events(volume='序卷', volume_dir='故事線/序卷', prefix='PRO'):
     if snap:
         text = read(f'{snap[-1]}/角色狀態.md')
         for m in re.finditer(r'^\| (\S+) \| 已故\((\w+-\d+)\)', text, re.M):
-            who, dead = m.group(1), int(m.group(2).split('-')[1])
+            who, death = m.group(1), m.group(2)
             for eid, names in ev.items():
-                if who in names and int(eid.split('-')[1]) > dead:
-                    add('已故', f'{who} 於 {eid} 出場,晚於死亡事件 {m.group(2)}')
-    # 伏筆登記簿事件存在
+                if who not in names:
+                    continue
+                # 死於前一卷者,本卷任何事件都不得出場;同卷者比較事件編號
+                if death.split('-')[0] != prefix or int(eid.split('-')[1]) > int(death.split('-')[1]):
+                    add('已故', f'{who} 於 {eid} 出場,晚於死亡事件 {death}')
+    # 伏筆登記簿事件存在(序卷)
     tp = '狀態/伏筆登記簿.md'
-    if os.path.exists(tp):
+    if prefix == 'PRO' and os.path.exists(tp):
         for m in re.finditer(r'\b(PRO-\d+)\b', read(tp)):
             if m.group(1) not in ev:
                 add('伏筆', f'伏筆登記簿引用不存在的事件 {m.group(1)}')
@@ -499,6 +506,20 @@ def check_event_desc():
                 add('事件描述', f'{v} {eid} 在時間線但沒有事件描述')
 
 
+# 23. 階段 D:紀錄對照標「狀態:已結案」後,啟用事件覆蓋、感情對稱、個性轉變與佔位符檢查
+def check_stage_d():
+    for v, pre in (('第一部', 'P1'), ('第二部', 'P2'), ('第三部', 'P3')):
+        rp = f'故事線/{v}/紀錄對照.md'
+        if not (os.path.exists(rp) and '狀態:已結案' in read(rp)):
+            continue
+        check_events(volume=v, volume_dir=f'故事線/{v}', prefix=pre)
+        check_symmetry(v)
+        check_personality(f'故事線/{v}', v, pre)
+        for f in glob.glob(f'角色/**/成長/**/{v}.md', recursive=True):
+            if '(待填)' in read(f):
+                add('紀錄', f'{f} 仍有「(待填)」')
+
+
 def check_tags_all():
     for v in ('序卷', '第一部', '第二部', '第三部'):
         d = f'故事線/{v}'
@@ -508,8 +529,8 @@ def check_tags_all():
 
 
 # 15. 個性轉變記錄
-def check_personality(vol_dir='故事線/序卷', volume='序卷'):
-    ev = events(vol_dir, 'PRO')
+def check_personality(vol_dir='故事線/序卷', volume='序卷', prefix='PRO'):
+    ev = events(vol_dir, prefix)
     rs = roots()
     for n, r in rs.items():
         f = f'{r}/成長/個性/{volume}.md'
@@ -614,7 +635,7 @@ def check_timeline_skeleton():
 
 
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps, check_event_desc):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps, check_event_desc, check_stage_d):
     fn()
 
 if problems:

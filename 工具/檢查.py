@@ -117,7 +117,9 @@ def check_events(volume='序卷', volume_dir='故事線/序卷', prefix='PRO'):
                 if who not in names:
                     continue
                 # 死於前一卷者,本卷任何事件都不得出場;同卷者比較事件編號
-                if death.split('-')[0] != prefix or int(eid.split('-')[1]) > int(death.split('-')[1]):
+                order = ['PRO', 'P1', 'P2', 'P3']
+                dv, ev_ = order.index(death.split('-')[0]), order.index(prefix)
+                if dv < ev_ or (dv == ev_ and int(eid.split('-')[1]) > int(death.split('-')[1])):
                     add('已故', f'{who} 於 {eid} 出場,晚於死亡事件 {death}')
     # 伏筆登記簿事件存在(序卷)
     tp = '狀態/伏筆登記簿.md'
@@ -146,21 +148,24 @@ def check_ratio():
             tot[k] = tot.get(k, 0) + v
 
 
-# 8. 角色狀態 L 與設定一致
+# 8. 角色狀態 L 與成長紀錄一致(以最新快照所屬卷的武學紀錄最後一段為準)
 def check_state_power():
     snap = sorted(glob.glob('狀態/*結束'))
     if not snap:
         return
+    vol = os.path.basename(snap[-1])[:-2]
+    rs = roots()
     for line in read(f'{snap[-1]}/角色狀態.md').split('\n'):
         cells = [c.strip() for c in line.strip('|').split('|')]
         if len(cells) < 6 or not cells[5].startswith('L'):
             continue
         name, lv = cells[0], cells[5]
-        p = f'角色/主要角色/{name}/設定/第一部.md'
-        if os.path.exists(p):
-            m = re.search(r'\*\*戰力\*\*:(L\d+)', read(p))
-            if m and m.group(1) != lv:
-                add('戰力', f'{name} 狀態表 {lv} 與第一部設定 {m.group(1)} 不一致')
+        for p in (f'{rs[name]}/成長/武學/{vol}.md' if name in rs else '', f'角色/主要角色/{name}/設定/{vol}.md'):
+            if p and os.path.exists(p):
+                ls = re.findall(r'\*\*戰力\*\*:(L\d+)', read(p))
+                if ls and ls[-1] != lv:
+                    add('戰力', f'{name} 狀態表 {lv} 與 {p} 最後一段 {ls[-1]} 不一致')
+                break
 
 
 # 9. ID 對照
@@ -230,7 +235,10 @@ def snapshot_text():
     return read(f'{snap[-1]}/角色狀態.md') if snap else ''
 
 
-def check_ages(vol_dir='故事線/序卷'):
+def check_ages(vol_dir=None):
+    snaps = sorted(glob.glob('狀態/*結束'))
+    if vol_dir is None:
+        vol_dir = '故事線/' + os.path.basename(snaps[-1])[:-2] if snaps else '故事線/序卷'
     p = f'{vol_dir}/年齡表.md'
     if not os.path.exists(p):
         return
@@ -254,9 +262,13 @@ def check_baseline():
         c = [x.strip() for x in line.strip('|').split('|')]
         if len(c) >= 6 and re.fullmatch(r'L\d+', c[5]):
             state[c[0]] = c[5]
+    skip = False
     for line in read('武學設定/總綱/戰力基準.md').split('\n'):
+        if line.startswith('#'):
+            skip = '序卷結束時點' in line  # 該段為起點值,進境見各卷成長紀錄
+            continue
         c = [x.strip() for x in line.strip('|').split('|')]
-        if len(c) >= 2 and re.fullmatch(r'L\d+', c[1]):
+        if not skip and len(c) >= 2 and re.fullmatch(r'L\d+', c[1]):
             keys = {c[0]}
             m = re.search(r'\((.*?)\)', c[0])
             if m:
@@ -524,9 +536,9 @@ def check_record_consistency(v):
             r = dict(zip(head, c))
             when[r['事件 ID']] = label_months(r['相對時間'].split('–')[0])
     snap = ''
-    s = sorted(glob.glob('狀態/*結束'))
-    if s:
-        snap = read(f'{s[-1]}/角色狀態.md')
+    prev = {'第一部': '序卷', '第二部': '第一部', '第三部': '第二部'}.get(v)
+    if prev and os.path.exists(f'狀態/{prev}結束/角色狀態.md'):
+        snap = read(f'狀態/{prev}結束/角色狀態.md')  # 男女主的起點戰力取上一卷結束時點
     for n, r in roots().items():
         # 個性轉變:時間欄的「(N 歲)」須等於年齡表起點加上滿年數
         pf = f'{r}/成長/個性/{v}.md'

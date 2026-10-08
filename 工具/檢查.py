@@ -356,8 +356,33 @@ def check_completeness():
                 add('完成度', f'{v} 缺少 {f}')
 
 
+# 17. 卷大綱與宏觀大綱的章級線別一致
+def chapter_tags(path):
+    tags = {}
+    for line in read(path).split('\n'):
+        m = re.match(r'- 第 (\d+)(?:–(\d+))? 章【(\w+)】', line)
+        if m:
+            a = int(m.group(1))
+            b = int(m.group(2) or a)
+            for n in range(a, b + 1):
+                tags[n] = m.group(3)
+    return tags
+
+
+def check_outline_tags():
+    for v, macro_path in (('第一部', '故事大綱/第一部_少年遊.md'), ('第二部', '故事大綱/第二部_離亂行.md'),
+                          ('第三部', '故事大綱/第三部_補天錄.md')):
+        p = f'故事線/{v}/大綱.md'
+        if not os.path.exists(p):
+            continue
+        macro, vol = chapter_tags(macro_path), chapter_tags(p)
+        for n in sorted(set(macro) | set(vol)):
+            if macro.get(n) != vol.get(n):
+                add('大綱', f'{v} 第 {n} 章線別:宏觀大綱為「{macro.get(n)}」,卷大綱為「{vol.get(n)}」')
+
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags, check_personality, check_completeness):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags, check_personality, check_completeness, check_outline_tags):
     fn()
 
 if problems:

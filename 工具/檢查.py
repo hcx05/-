@@ -262,6 +262,12 @@ def check_baseline():
 
 
 # 13. 章節大綱與事件描述的章節欄一致
+def check_chapters_all():
+    for v in ('序卷', '第一部', '第二部', '第三部'):
+        if os.path.exists(f'故事線/{v}/事件描述.md'):
+            check_chapters(f'故事線/{v}')
+
+
 def check_chapters(vol_dir='故事線/序卷'):
     d = f'{vol_dir}/章節'
     if not os.path.isdir(d):
@@ -430,6 +436,69 @@ def check_gaps():
                 add('缺口', f'{v} {label}:{n}(首見 {ev[0]})')
 
 
+# 22. 事件描述:與時間線逐項一致,出場者與場景與凍結紀錄一致
+def check_event_desc():
+    for v, pre in (('第一部', 'P1'), ('第二部', 'P2'), ('第三部', 'P3')):
+        ed, tl, fz = (f'故事線/{v}/{x}.md' for x in ('事件描述', '時間線', '凍結'))
+        if not (os.path.exists(ed) and os.path.exists(tl) and os.path.exists(fz)):
+            continue
+        live, head = {}, None
+        for line in read(tl).split('\n'):
+            if not line.startswith('|'):
+                continue
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if c[0] == '序':
+                head = c
+            elif head and len(c) == len(head) and c[0].isdigit():
+                r = dict(zip(head, c))
+                live[r['事件 ID']] = r
+        frozen = {}
+        for line in read(fz).split('\n'):
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if len(c) == 6 and re.fullmatch(r'P\d-\d+', c[0]):
+                frozen[c[0]] = c
+        seen = set()
+        for sec in re.split(r'\n(?=### )', read(ed)):
+            m = re.match(rf'### ({pre}-\d+) (.*)', sec)
+            if not m:
+                continue
+            eid, name = m.group(1), m.group(2).strip()
+            seen.add(eid)
+            if eid not in live:
+                add('事件描述', f'{v} {eid} 不在時間線')
+                continue
+            r = live[eid]
+            get = lambda k: (re.search(rf'- \*\*{k}\*\*:(.*)', sec) or [None, ''])[1].strip()
+            for k, tk in (('序號', '序'), ('時間', '相對時間'), ('章節', '章節')):
+                if get(k) != r[tk]:
+                    add('事件描述', f'{v} {eid} {k}「{get(k)}」與時間線「{r[tk]}」不一致')
+            if name != r['事件名稱']:
+                add('事件描述', f'{v} {eid} 標題與時間線事件名稱不一致')
+            if not get('描述') or len(get('描述')) > 120:
+                add('事件描述', f'{v} {eid} 描述缺漏或超過 120 字(應為一至兩句)')
+            cast = get('出場角色')
+            roles = set(re.findall(r'\[([^\]]+)\]\(\.\./\.\./角色/', cast))
+            orgs = set(re.findall(r'\(\.\./\.\./勢力/([^)]+)\.md\)', cast))
+            sc = get('場景')
+            m2 = re.search(r'場景設定/([^/]+)/建模描述', sc) or re.search(r'待建:(.+)', sc)
+            scene = m2.group(1).strip() if m2 else ''
+            z = frozen.get(eid)
+            if not z:
+                add('事件描述', f'{v} {eid} 不在凍結紀錄')
+                continue
+            fr = {x for x in z[3].split('、') if x}
+            fo = {x for x in z[4].split('、') if x and x != '—'}
+            if roles != fr:
+                add('事件描述', f'{v} {eid} 出場角色與凍結紀錄不一致(差異:{sorted(roles ^ fr)})')
+            if orgs != fo:
+                add('事件描述', f'{v} {eid} 出場勢力與凍結紀錄不一致(差異:{sorted(orgs ^ fo)})')
+            if scene != z[5]:
+                add('事件描述', f'{v} {eid} 場景「{scene}」與凍結紀錄「{z[5]}」不一致')
+        for eid in live:
+            if eid not in seen:
+                add('事件描述', f'{v} {eid} 在時間線但沒有事件描述')
+
+
 def check_tags_all():
     for v in ('序卷', '第一部', '第二部', '第三部'):
         d = f'故事線/{v}'
@@ -470,8 +539,10 @@ def check_completeness():
         if not os.path.exists(f'{d}/事件描述.md'):
             continue  # 尚未開發的卷不檢查
         need = [f'{d}/{x}' for x in ('大綱.md', '時間線.md', '節奏檢視.md', '吸引力分析.md', '年齡表.md', '章節/README.md')]
-        need += [f'狀態/{v}結束/{x}' for x in ('角色狀態.md', '地區與國家狀態.md', '勢力狀態.md', '世界狀態.md')]
-        need += ['狀態/秘密知情矩陣.md', '狀態/伏筆登記簿.md']
+        # 卷末快照屬階段 F:該卷已開始收尾(有 狀態/{卷}結束/ 資料夾)才要求齊全
+        if os.path.isdir(f'狀態/{v}結束') or v == '序卷':
+            need += [f'狀態/{v}結束/{x}' for x in ('角色狀態.md', '地區與國家狀態.md', '勢力狀態.md', '世界狀態.md')]
+            need += ['狀態/秘密知情矩陣.md', '狀態/伏筆登記簿.md']
         for f in need:
             if not os.path.exists(f):
                 add('完成度', f'{v} 缺少 {f}')
@@ -543,7 +614,7 @@ def check_timeline_skeleton():
 
 
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps, check_event_desc):
     fn()
 
 if problems:

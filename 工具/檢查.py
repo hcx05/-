@@ -286,8 +286,36 @@ def check_chapters(vol_dir='故事線/序卷'):
             add('章節', f'章節大綱引用不存在的事件 {eid}')
 
 
+
+# 14. 標籤詞表與節奏檢視
+def check_tags(vol_dir='故事線/序卷'):
+    import importlib.util
+    t = read('設計規範/標籤表.md')
+    sec_event = t.split('## 事件標籤')[1].split('## 感情線')[0]
+    sec_love = t.split('## 感情線')[1].split('## 規劃步驟')[0]
+    tags = set(re.findall(r'^\| (\S+) \| .*? \| (?:緩衝|推進|重) \|$', sec_event, re.M))
+    states = set(re.findall(r'^\| (\S+) \| (?!意義).*\|$', sec_love, re.M)) - {'---'}
+    spec = importlib.util.spec_from_file_location('標籤檢視', '工具/標籤檢視.py')
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for r in mod.parse_timeline(vol_dir):
+        for tg in [x for x in re.split(r'[、,]', r['事件標籤']) if x]:
+            if tg not in tags:
+                add('標籤', f"{r['事件 ID']} 使用未登錄的標籤「{tg}」")
+        if r['感情線'] != '-':
+            st = r['感情線'].split()[0]
+            if st not in states:
+                add('標籤', f"{r['事件 ID']} 使用未登錄的感情線狀態「{st}」")
+            elif len(r['感情線'].split()) < 2:
+                add('標籤', f"{r['事件 ID']} 感情線缺少表情")
+    text, _ = mod.render(vol_dir)
+    f = f'{vol_dir}/節奏檢視.md'
+    if not os.path.exists(f) or read(f) != text:
+        add('標籤', f'{f} 已過期,請執行 python3 工具/標籤檢視.py')
+
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags):
     fn()
 
 if problems:

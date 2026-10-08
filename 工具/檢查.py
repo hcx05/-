@@ -411,6 +411,25 @@ def check_freeze():
                 add('凍結', f'{v} {eid} 在凍結紀錄中,但時間線已無此事件(事件 ID 不得刪除或重編)')
 
 
+# 21. 缺口掃描:已結案的卷,凍結紀錄的出場者都必須有檔案(或登記待建)
+def check_gaps():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('缺口掃描', '工具/缺口掃描.py')
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for v in ('第一部', '第二部', '第三部'):
+        rp = f'故事線/{v}/缺口掃描.md'
+        if not (os.path.exists(rp) and os.path.exists(f'故事線/{v}/凍結.md')):
+            continue
+        if '狀態:已結案' not in read(rp):
+            continue
+        uses, gaps = mod.scan(v)
+        labels = {'角色': '缺角色資料夾', '角色設定': f'缺 設定/{v}.md', '勢力': '缺勢力檔', '場景': '缺場景建模且未登記待建'}
+        for k, label in labels.items():
+            for n, ev in gaps[k]:
+                add('缺口', f'{v} {label}:{n}(首見 {ev[0]})')
+
+
 def check_tags_all():
     for v in ('序卷', '第一部', '第二部', '第三部'):
         d = f'故事線/{v}'
@@ -524,7 +543,7 @@ def check_timeline_skeleton():
 
 
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps):
     fn()
 
 if problems:

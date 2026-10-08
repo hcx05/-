@@ -381,8 +381,48 @@ def check_outline_tags():
                 add('大綱', f'{v} 第 {n} 章線別:宏觀大綱為「{macro.get(n)}」,卷大綱為「{vol.get(n)}」')
 
 
+# 18. 時間線骨架:事件 ID 前綴與連號、章節覆蓋卷大綱的每一章
+def check_timeline_skeleton():
+    prefixes = {'第一部': 'P1', '第二部': 'P2', '第三部': 'P3'}
+    for v, pre in prefixes.items():
+        tl, outline = f'故事線/{v}/時間線.md', f'故事線/{v}/大綱.md'
+        if not (os.path.exists(tl) and os.path.exists(outline)):
+            continue
+        rows = []
+        head = None
+        for line in read(tl).split('\n'):
+            if not line.startswith('|'):
+                continue
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if c[0] == '序':
+                head = c
+            elif head and len(c) == len(head) and c[0].isdigit():
+                rows.append(dict(zip(head, c)))
+        nums = []
+        for r in rows:
+            m = re.fullmatch(rf'{pre}-(\d+)', r['事件 ID'])
+            if not m:
+                add('時間線', f"{v} 事件 ID「{r['事件 ID']}」不符合前綴 {pre}-")
+            else:
+                nums.append(int(m.group(1)))
+        if sorted(nums) != list(range(1, len(nums) + 1)):
+            add('時間線', f'{v} 事件 ID 不連號或重複')
+        covered = set()
+        for r in rows:
+            m = re.fullmatch(r'第 (\d+) 章', r['章節'])
+            if m:
+                covered.add(int(m.group(1)))
+            else:
+                add('時間線', f"{v} {r['事件 ID']} 章節欄「{r['章節']}」格式不符")
+        for n in chapter_tags(outline):
+            if n not in covered:
+                add('時間線', f'{v} 第 {n} 章沒有任何事件')
+        for n in covered - set(chapter_tags(outline)):
+            add('時間線', f'{v} 時間線引用卷大綱沒有的第 {n} 章')
+
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags, check_personality, check_completeness, check_outline_tags):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton):
     fn()
 
 if problems:

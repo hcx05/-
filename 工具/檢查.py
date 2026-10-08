@@ -379,6 +379,38 @@ def check_vol_ages(v='第一部', prev='序卷'):
                         add('年齡', f"{v}時間線 {r['事件 ID']} {who}歲數 {r[who]},依年齡表應為 {exp}")
 
 
+# 20. 凍結紀錄:時間線的事件 ID、相對時間、章節不得與凍結紀錄不一致
+def check_freeze():
+    for v in ('第一部', '第二部', '第三部'):
+        fz, tl = f'故事線/{v}/凍結.md', f'故事線/{v}/時間線.md'
+        if not (os.path.exists(fz) and os.path.exists(tl)):
+            continue
+        frozen = {}
+        for line in read(fz).split('\n'):
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if len(c) == 6 and re.fullmatch(r'P\d-\d+', c[0]):
+                frozen[c[0]] = c
+        head = None
+        live = {}
+        for line in read(tl).split('\n'):
+            if not line.startswith('|'):
+                continue
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if c[0] == '序':
+                head = c
+            elif head and len(c) == len(head) and c[0].isdigit():
+                r = dict(zip(head, c))
+                live[r['事件 ID']] = r
+        for eid, r in live.items():
+            if eid not in frozen:
+                add('凍結', f'{v} {eid} 不在凍結紀錄,請走變更傳播並更新 {fz}')
+            elif frozen[eid][1] != r['相對時間'] or frozen[eid][2] != r['章節']:
+                add('凍結', f"{v} {eid} 時間或章節已與凍結紀錄不同(凍結:{frozen[eid][1]}/{frozen[eid][2]};現在:{r['相對時間']}/{r['章節']})")
+        for eid in frozen:
+            if eid not in live:
+                add('凍結', f'{v} {eid} 在凍結紀錄中,但時間線已無此事件(事件 ID 不得刪除或重編)')
+
+
 def check_tags_all():
     for v in ('序卷', '第一部', '第二部', '第三部'):
         d = f'故事線/{v}'
@@ -492,7 +524,7 @@ def check_timeline_skeleton():
 
 
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze):
     fn()
 
 if problems:

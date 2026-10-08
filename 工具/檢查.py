@@ -314,8 +314,32 @@ def check_tags(vol_dir='故事線/序卷'):
         add('標籤', f'{f} 已過期,請執行 python3 工具/標籤檢視.py')
 
 
+
+# 15. 個性轉變記錄
+def check_personality(vol_dir='故事線/序卷', volume='序卷'):
+    ev = events(vol_dir, 'PRO')
+    rs = roots()
+    for n, r in rs.items():
+        f = f'{r}/成長/個性/{volume}.md'
+        if not os.path.exists(f):
+            continue
+        t = read(f)
+        for m in re.finditer(r'- \*\*觸發事件\*\*:(\S+)', t):
+            eid = m.group(1)
+            if eid not in ev:
+                add('個性', f'{f} 觸發事件 {eid} 不存在')
+            elif n not in ev[eid]:
+                add('個性', f'{f} 觸發事件 {eid} 的出場者不含「{n}」')
+        if '## 卷末個性摘要' not in t:
+            add('個性', f'{f} 缺少「卷末個性摘要」')
+    # 狀態表必須有「當前個性」欄
+    snap = sorted(glob.glob('狀態/*結束'))
+    if snap and '當前個性' not in read(f'{snap[-1]}/角色狀態.md'):
+        add('個性', '角色狀態缺少「當前個性」欄')
+
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags, check_personality):
     fn()
 
 if problems:

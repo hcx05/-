@@ -317,6 +317,68 @@ def check_tags(vol_dir='故事線/序卷'):
 
 
 
+# 19. 第一部年齡表:與序卷銜接、與設定檔及時間線一致
+def age_table(path):
+    rows = {}
+    for line in read(path).split('\n'):
+        c = [x.strip() for x in line.strip('|').split('|')]
+        if len(c) >= 3 and c[0] and c[0] not in ('角色', '---', '滿歲', '時點'):
+            rows[c[0]] = c
+    return rows
+
+
+def label_months(label):
+    s = label.replace('初遇後', '').strip()
+    if '夜' in s and not re.search(r'\d', s):
+        return 0.0
+    m = 0.0
+    for n, unit in re.findall(r'(\d+)\s*(年|個月|日)', s):
+        m += int(n) * {'年': 12, '個月': 1, '日': 1 / 30}[unit]
+    return m
+
+
+def check_vol_ages(v='第一部', prev='序卷'):
+    p = f'故事線/{v}/年齡表.md'
+    if not os.path.exists(p):
+        return
+    cur = age_table(p)
+    old = age_table(f'故事線/{prev}/年齡表.md')
+    # 與前卷銜接:本卷起點 = 前卷結束
+    for name, c in cur.items():
+        if name in old and re.fullmatch(r'\d+', c[1]) and re.fullmatch(r'\d+', old[name][2]) and c[1] != old[name][2]:
+            add('年齡', f'{v}年齡表 {name} 起點 {c[1]} 與{prev}年齡表結束 {old[name][2]} 不一致')
+    # 設定檔
+    for name, c in cur.items():
+        f = f'角色/主要角色/{name}/設定/{v}.md'
+        if os.path.exists(f) and re.fullmatch(r'\d+', c[1]):
+            m = re.search(r'\*\*(?:初始)?年齡\*\*:約?\s*(\d+)', read(f))
+            if m and m.group(1) != c[1]:
+                add('年齡', f'{f} 年齡 {m.group(1)} 與年齡表起點 {c[1]} 不一致')
+    # 時間線:歲數 = 起點 + 滿年數
+    tl = f'故事線/{v}/時間線.md'
+    if os.path.exists(tl) and '男主' in cur and re.fullmatch(r'\d+', cur['男主'][1]):
+        base = int(cur['男主'][1])
+        head = None
+        for line in read(tl).split('\n'):
+            if not line.startswith('|'):
+                continue
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if c[0] == '序':
+                head = c
+            elif head and len(c) == len(head) and c[0].isdigit():
+                r = dict(zip(head, c))
+                parts = r['相對時間'].split('–')
+                ages = []
+                for part in parts:
+                    a = base + int(label_months(part) // 12 + 1e-9)
+                    if not ages or ages[-1] != a:
+                        ages.append(a)
+                exp = '–'.join(str(a) for a in ages)
+                for who in ('男主', '女主'):
+                    if r[who] != exp:
+                        add('年齡', f"{v}時間線 {r['事件 ID']} {who}歲數 {r[who]},依年齡表應為 {exp}")
+
+
 def check_tags_all():
     for v in ('序卷', '第一部', '第二部', '第三部'):
         d = f'故事線/{v}'
@@ -430,7 +492,7 @@ def check_timeline_skeleton():
 
 
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages):
     fn()
 
 if problems:

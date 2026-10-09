@@ -91,6 +91,18 @@ def events(volume_dir='故事線/序卷', prefix='PRO'):
     return out
 
 
+def time_seq(volume_dir):
+    """事件 ID → 時間線的序(時間順序)。"""
+    out = {}
+    p = f'{volume_dir}/時間線.md'
+    if os.path.exists(p):
+        for line in read(p).split('\n'):
+            m = re.match(r'\| (\d+) \| (\w+-\d+) ', line)
+            if m:
+                out[m.group(2)] = int(m.group(1))
+    return out
+
+
 def check_events(volume='序卷', volume_dir='故事線/序卷', prefix='PRO'):
     ev = events(volume_dir, prefix)
     rs = roots()
@@ -119,7 +131,10 @@ def check_events(volume='序卷', volume_dir='故事線/序卷', prefix='PRO'):
                 # 死於前一卷者,本卷任何事件都不得出場;同卷者比較事件編號
                 order = ['PRO', 'P1', 'P2', 'P3']
                 dv, ev_ = order.index(death.split('-')[0]), order.index(prefix)
-                if dv < ev_ or (dv == ev_ and int(eid.split('-')[1]) > int(death.split('-')[1])):
+                # 同卷以時間線的「序」比較(後加入的事件編號不依時間);沒有時間線時才比較編號
+                sq = time_seq(volume_dir)
+                later = (sq[eid] > sq[death]) if (eid in sq and death in sq) else int(eid.split('-')[1]) > int(death.split('-')[1])
+                if dv < ev_ or (dv == ev_ and later):
                     add('已故', f'{who} 於 {eid} 出場,晚於死亡事件 {death}')
     # 伏筆登記簿事件存在(序卷)
     tp = '狀態/伏筆登記簿.md'

@@ -136,6 +136,18 @@ def check_events(volume='序卷', volume_dir='故事線/序卷', prefix='PRO'):
                 later = (sq[eid] > sq[death]) if (eid in sq and death in sq) else int(eid.split('-')[1]) > int(death.split('-')[1])
                 if dv < ev_ or (dv == ev_ and later):
                     add('已故', f'{who} 於 {eid} 出場,晚於死亡事件 {death}')
+    # 本卷內死亡:年齡表標「已故(本卷事件)」者,不得出現在晚於死亡事件的事件
+    ap = f'{volume_dir}/年齡表.md'
+    if os.path.exists(ap):
+        sq = time_seq(volume_dir)
+        for line in read(ap).split('\n'):
+            c = [x.strip() for x in line.strip().strip('|').split('|')]
+            m = re.search(rf'已故\(({prefix}-\d+)\)', c[-1] if c else '')
+            if not m or len(c) < 4 or m.group(1) not in sq:
+                continue
+            for eid, names in ev.items():
+                if c[0] in names and eid in sq and sq[eid] > sq[m.group(1)]:
+                    add('已故', f'{c[0]} 於 {eid} 出場,晚於年齡表標註的死亡事件 {m.group(1)}')
     # 伏筆登記簿事件存在(序卷)
     tp = '狀態/伏筆登記簿.md'
     if prefix == 'PRO' and os.path.exists(tp):

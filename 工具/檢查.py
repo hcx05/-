@@ -696,8 +696,54 @@ def check_timeline_skeleton():
             add('時間線', f'{v} 時間線引用卷大綱沒有的第 {n} 章')
 
 
+# 28. 招式錄:事件 ID、出場者、章節區間與凍結紀錄一致;套路錄的「已出場」須有招式錄為證
+def check_move_records():
+    seen = set()
+    for v, pre in (('第一部', 'P1'), ('第二部', 'P2'), ('第三部', 'P3')):
+        mp, fz = f'武學設定/招式/{v}招式錄.md', f'故事線/{v}/凍結.md'
+        if not os.path.exists(mp):
+            continue
+        if not os.path.exists(fz):
+            add('招式錄', f'{mp} 沒有對應的凍結紀錄')
+            continue
+        frozen = {}
+        for line in read(fz).split('\n'):
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if len(c) == 6 and re.fullmatch(r'P\d-\d+', c[0]):
+                frozen[c[0]] = c
+        lo = hi = None
+        for line in read(mp).split('\n'):
+            m = re.match(r'## .*\(第 (\d+)[–-](\d+) 章\)', line)
+            if m:
+                lo, hi = int(m.group(1)), int(m.group(2))
+                continue
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if not line.startswith('|') or not re.fullmatch(r'P\d-\d+', c[0]):
+                continue
+            eid = c[0]
+            seen.add(eid)
+            z = frozen.get(eid)
+            if not z:
+                add('招式錄', f'{mp} {eid} 不在凍結紀錄')
+                continue
+            roster = {x for x in z[3].split('、') + z[4].split('、') if x and x != '—'}
+            for name in [x for x in c[1].split('、') if x]:
+                if name not in roster:
+                    add('招式錄', f'{mp} {eid} 出場者「{name}」不在凍結紀錄的出場名單')
+            m2 = re.fullmatch(r'第 (\d+) 章', z[2])
+            if lo is None or not m2 or not lo <= int(m2.group(1)) <= hi:
+                add('招式錄', f'{mp} {eid} 的章節「{z[2]}」不在所屬小節的章節區間')
+            if len(c) != 6 or not all(c):
+                add('招式錄', f'{mp} {eid} 欄位不足或有空欄')
+    sp = '武學設定/招式/套路錄.md'
+    if os.path.exists(sp):
+        for ids in re.findall(r'已出場\(([^)]*)\)', read(sp)):
+            for eid in re.findall(r'P\d-\d+', ids):
+                if eid not in seen:
+                    add('招式錄', f'{sp} 標「已出場」的 {eid} 沒有對應的招式錄')
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps, check_event_desc, check_stage_d):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records):
     fn()
 
 if problems:

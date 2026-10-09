@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""依事件描述與時間線,產生各卷的「出場順序」檢視,並檢查角色是否出得太密或隔太久。
+"""依事件描述(尚無時用凍結紀錄)與時間線,產生各卷的「出場順序」檢視,並檢查角色是否出得太密或隔太久。
 
 用法:python3 工具/出場順序.py 故事線/第一部
 閱讀順序 = 依章節,再依事件序。「新登場」不含男女主,也不含前面各卷已出場的角色。
@@ -21,14 +21,21 @@ def read(p):
 
 
 def casts(vol):
+    """出場者來源:有事件描述就用事件描述,否則(階段 A8 之後、C1 之前)用凍結紀錄。"""
     p = f'故事線/{vol}/事件描述.md'
     out = {}
-    if not os.path.exists(p):
+    if os.path.exists(p):
+        for m in re.finditer(r'### ([A-Z0-9]+-\d+) [^\n]+\n(.*?)(?=\n### |\Z)', read(p), re.S):
+            c = re.search(r'- \*\*出場角色\*\*:(.*)', m.group(2))
+            names = [n for n, path in re.findall(r'\[([^\]]+)\]\(([^)]+)\)', c.group(1) if c else '') if '角色/' in path]
+            out[m.group(1)] = ['懷虛子' if n.startswith('懷虛子') else n for n in names]
         return out
-    for m in re.finditer(r'### ([A-Z0-9]+-\d+) [^\n]+\n(.*?)(?=\n### |\Z)', read(p), re.S):
-        c = re.search(r'- \*\*出場角色\*\*:(.*)', m.group(2))
-        names = [n for n, path in re.findall(r'\[([^\]]+)\]\(([^)]+)\)', c.group(1) if c else '') if '角色/' in path]
-        out[m.group(1)] = ['懷虛子' if n.startswith('懷虛子') else n for n in names]
+    fz = f'故事線/{vol}/凍結.md'
+    if os.path.exists(fz):
+        for line in read(fz).split('\n'):
+            c = [x.strip() for x in line.strip('|').split('|')]
+            if len(c) == 6 and re.fullmatch(r'[A-Z0-9]+-\d+', c[0]):
+                out[c[0]] = [x for x in c[3].split('、') if x]
     return out
 
 
@@ -80,12 +87,21 @@ def analyze(vol_dir):
 
 
 def reminders(vol_dir):
+    """回頭提示來源:章節大綱的「回頭提示」行,以及卷大綱「回頭提示」小節中 `- 第 N 章:名——內容` 的條目。"""
     out = collections.defaultdict(set)
     for f in glob.glob(f'{vol_dir}/章節/[0-9]*.md'):
         n = int(os.path.basename(f).split('_')[0])
         for line in read(f).split('\n'):
             if '回頭提示' in line:
                 out[n].add(line)
+    op = f'{vol_dir}/大綱.md'
+    if os.path.exists(op):
+        sec = read(op).split('## 回頭提示')
+        if len(sec) > 1:
+            for line in sec[1].split('\n## ')[0].split('\n'):
+                m = re.match(r'- 第 (\d+) 章[:：](.*)', line)
+                if m:
+                    out[int(m.group(1))].add(line)
     return out
 
 

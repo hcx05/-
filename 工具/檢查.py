@@ -742,8 +742,27 @@ def check_move_records():
                 if eid not in seen:
                     add('招式錄', f'{sp} 標「已出場」的 {eid} 沒有對應的招式錄')
 
+# 29. 單次出場:本卷只出現在一個事件的角色(男女主除外)不建該卷的記憶、武學、個性、感情紀錄
+def check_single_appearance():
+    rs = roots()
+    for v, pre in (('序卷', 'PRO'), ('第一部', 'P1'), ('第二部', 'P2'), ('第三部', 'P3')):
+        d = f'故事線/{v}'
+        if not os.path.exists(f'{d}/事件描述.md'):
+            continue
+        cnt = {}
+        for names in events(d, pre).values():
+            for n in names:
+                cnt[n] = cnt.get(n, 0) + 1
+        for n, k in cnt.items():
+            if k != 1 or n in ('男主', '女主') or n not in rs:
+                continue
+            for pat in (f'{rs[n]}/成長/記憶/{v}.md', f'{rs[n]}/成長/武學/{v}.md', f'{rs[n]}/成長/個性/{v}.md',
+                        f'{rs[n]}/成長/感情/*/{v}.md'):
+                for f in glob.glob(pat):
+                    add('單次出場', f'{n} 在{v}只出現一次,不需要 {f}')
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records, check_single_appearance):
     fn()
 
 if problems:

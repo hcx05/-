@@ -761,8 +761,24 @@ def check_single_appearance():
                 for f in glob.glob(pat):
                     add('單次出場', f'{n} 在{v}只出現一次,不需要 {f}')
 
+# 30. 出場順序:新名字不能太密,隔太久再出現要有回頭提示;出場順序.md 須為最新
+def check_appearance_order():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('出場順序', '工具/出場順序.py')
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for v in ('第一部', '第二部', '第三部'):
+        d = f'故事線/{v}'
+        f = f'{d}/出場順序.md'
+        if not (os.path.exists(f) and os.path.exists(f'{d}/事件描述.md') and os.path.exists(f'{d}/時間線.md')):
+            continue
+        for x in mod.problems(d):
+            add('出場順序', f'{v} {x}')
+        if read(f) != mod.render(d):
+            add('出場順序', f'{f} 已過期,請執行 python3 工具/出場順序.py {d}')
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records, check_single_appearance):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records, check_single_appearance, check_appearance_order):
     fn()
 
 if problems:

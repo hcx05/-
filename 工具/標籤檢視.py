@@ -28,8 +28,6 @@ def parse_timeline(vol_dir):
 
 
 def chapter_index(label):
-    if label == '楔子':
-        return 0
     m = re.search(r'\d+', label)
     return int(m.group()) if m else 99
 

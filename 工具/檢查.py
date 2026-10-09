@@ -57,7 +57,7 @@ def check_symmetry(volume='序卷'):
             for x in ALIAS.get(t, [t]):
                 pairs.add((n, x))
     dead = set()
-    snap = sorted(glob.glob('狀態/*結束'))
+    snap = snap_dirs()
     if snap:
         dead = set(re.findall(r'^\| (\S+) \| 已故\(', read(f'{snap[-1]}/角色狀態.md'), re.M))
     for a, b in sorted(pairs):
@@ -91,6 +91,13 @@ def events(volume_dir='故事線/序卷', prefix='PRO'):
     return out
 
 
+def snap_dirs():
+    """狀態快照資料夾,依卷的先後排序(不可用字串排序:『二』的碼點大於『三』)。"""
+    order = ['序卷', '第一部', '第二部', '第三部']
+    ds = glob.glob('狀態/*結束')
+    return sorted(ds, key=lambda d: order.index(os.path.basename(d)[:-2]) if os.path.basename(d)[:-2] in order else len(order))
+
+
 def time_seq(volume_dir):
     """事件 ID → 時間線的序(時間順序)。"""
     out = {}
@@ -120,7 +127,7 @@ def check_events(volume='序卷', volume_dir='故事線/序卷', prefix='PRO'):
             if os.path.exists(f) and eid not in read(f):
                 add('事件覆蓋', f'{eid} 的出場者「{n}」記憶檔未列此事件')
     # 已故角色不得出現在死後事件
-    snap = sorted(glob.glob('狀態/*結束'))
+    snap = snap_dirs()
     if snap:
         text = read(f'{snap[-1]}/角色狀態.md')
         for m in re.finditer(r'^\| (\S+) \| 已故\((\w+-\d+)\)', text, re.M):
@@ -177,7 +184,7 @@ def check_ratio():
 
 # 8. 角色狀態 L 與成長紀錄一致(以最新快照所屬卷的武學紀錄最後一段為準)
 def check_state_power():
-    snap = sorted(glob.glob('狀態/*結束'))
+    snap = snap_dirs()
     if not snap:
         return
     vol = os.path.basename(snap[-1])[:-2]
@@ -258,12 +265,12 @@ def check_terms():
 
 # 11. 年齡表與角色狀態
 def snapshot_text():
-    snap = sorted(glob.glob('狀態/*結束'))
+    snap = snap_dirs()
     return read(f'{snap[-1]}/角色狀態.md') if snap else ''
 
 
 def check_ages(vol_dir=None):
-    snaps = sorted(glob.glob('狀態/*結束'))
+    snaps = snap_dirs()
     if vol_dir is None:
         vol_dir = '故事線/' + os.path.basename(snaps[-1])[:-2] if snaps else '故事線/序卷'
     p = f'{vol_dir}/年齡表.md'
@@ -659,7 +666,7 @@ def check_personality(vol_dir='故事線/序卷', volume='序卷', prefix='PRO')
         if '## 卷末個性摘要' not in t:
             add('個性', f'{f} 缺少「卷末個性摘要」')
     # 狀態表必須有「當前個性」欄
-    snap = sorted(glob.glob('狀態/*結束'))
+    snap = snap_dirs()
     if snap and '當前個性' not in read(f'{snap[-1]}/角色狀態.md'):
         add('個性', '角色狀態缺少「當前個性」欄')
 

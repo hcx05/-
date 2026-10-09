@@ -391,7 +391,7 @@ def tl_months(v):
 
 
 def check_vol_ages_all():
-    for v, prev in (('第一部', '序卷'), ('第二部', '第一部')):
+    for v, prev in (('第一部', '序卷'), ('第二部', '第一部'), ('第三部', '第二部')):
         check_vol_ages(v, prev)
 
 

@@ -33,8 +33,11 @@ def chapter_index(label):
 
 
 def render(vol_dir):
-    rows = parse_timeline(vol_dir)
+    all_rows = parse_timeline(vol_dir)
     name = os.path.basename(vol_dir)
+    # 章節欄為「背景」或「第 N 章(提及)」的事件不在正文演出,不計入閱讀節奏(DEC-073),另表列出
+    rows = [r for r in all_rows if '背景' not in r['章節'] and '提及' not in r['章節']]
+    offstage = [r for r in all_rows if r not in rows]
     rows.sort(key=lambda r: (chapter_index(r['章節']), int(r['序'])))
     out = [f'# {name} 節奏檢視', '',
            '> 由 `工具/標籤檢視.py` 依時間線產生,請勿手動修改。順序為**閱讀順序**(依章節,再依事件序)。',
@@ -79,7 +82,7 @@ def render(vol_dir):
         out.append(f"| {ch} | {'<br>'.join(seq)} | {cnt['重']} | {cnt['推進']} | {cnt['緩衝']} |")
     close_streak()
     n = len(rows)
-    out += ['', f"全卷 {n} 個事件:重 {total['重']}、推進 {total['推進']}、緩衝 {total['緩衝']}"
+    out += ['', f"{'演出事件' if offstage else '全卷'} {n} 個{'' if offstage else '事件'}:重 {total['重']}、推進 {total['推進']}、緩衝 {total['緩衝']}"
             f"(緩衝占比約 {total['緩衝'] / n * 100:.0f}%,建議不低於 30%)。", '']
     if total['緩衝'] / n < 0.3:
         warns.append('緩衝類事件占比低於 30%')
@@ -98,6 +101,14 @@ def render(vol_dir):
             if s in ('爭執', '分離') and not any(x in ('和好', '理解', '重逢', '情定') for x in states[i + 1:]):
                 warns.append(f'感情線「{s}」之後本卷尚無收束(和好/理解/重逢/情定)')
     out.append('')
+    if offstage:
+        out += ['## 口述與背景事件(不計入閱讀節奏)', '', '| 去向 | 事件(標籤) |', '|---|---|']
+        groups = {}
+        for r in offstage:
+            groups.setdefault(r['章節'], []).append(f"{r['事件 ID']}({r['事件標籤']})")
+        for g, v in groups.items():
+            out.append(f"| {g} | {'、'.join(v)} |")
+        out.append('')
     out += ['## 提醒', '']
     out += [f'- {w}' for w in warns] or ['- 無']
     out.append('')

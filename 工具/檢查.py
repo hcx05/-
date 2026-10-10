@@ -332,17 +332,29 @@ def check_chapters(vol_dir='故事線/序卷'):
         c = re.search(r'- \*\*章節\*\*:(.*)', sec)
         if m and c:
             ev_ch[m.group(1)] = c.group(1).strip().replace(' ', '')
-    seen = {}
+    # 章節欄三種寫法:「第 N 章」演出(對應事件)、「第 N 章(提及)」口述或回想(提及事件)、「背景」不入正文(DEC-073)
+    seen, ref = {}, {}
     for f in sorted(glob.glob(f'{d}/[0-9]*.md')):
         t = read(f)
         title = re.match(r'# (.*?) · ', t).group(1).replace(' ', '')
         m = re.search(r'- \*\*對應事件\*\*:(.*)', t)
         for eid in re.findall(r'\w+-\d+', m.group(1) if m else ''):
             seen[eid] = title
+        m = re.search(r'- \*\*提及事件\*\*:(.*)', t)
+        for eid in re.findall(r'\w+-\d+', m.group(1) if m else ''):
+            ref[eid] = title
     for eid, ch in ev_ch.items():
-        if seen.get(eid) != ch:
+        if ch == '背景':
+            if eid in seen or eid in ref:
+                add('章節', f'{eid} 事件描述章節為「背景」,但章節大綱仍列了它')
+        elif ch.endswith('(提及)'):
+            if ref.get(eid) != ch[:-4]:
+                add('章節', f'{eid} 事件描述章節為「{ch}」,章節大綱提及事件為「{ref.get(eid)}」')
+            if eid in seen:
+                add('章節', f'{eid} 同時列為對應事件與提及事件')
+        elif seen.get(eid) != ch:
             add('章節', f'{eid} 事件描述章節為「{ch}」,章節大綱為「{seen.get(eid)}」')
-    for eid in seen:
+    for eid in list(seen) + list(ref):
         if eid not in ev_ch:
             add('章節', f'章節大綱引用不存在的事件 {eid}')
 
@@ -835,8 +847,39 @@ def check_appearance_order():
         if read(f) != mod.render(d):
             add('出場順序', f'{f} 已過期,請執行 python3 工具/出場順序.py {d}')
 
+# 31. 正文與章節大綱:章號、標題、對應事件須一致(階段 G 關卡);正文檔案須列在正文 README 的進度表
+def check_prose():
+    for v in ('序卷', '第一部', '第二部', '第三部'):
+        pd = f'正文/{v}'
+        if not os.path.isdir(pd):
+            continue
+        readme = read('正文/README.md') if os.path.exists('正文/README.md') else ''
+        for f in sorted(glob.glob(f'{pd}/第*章_*.md')):
+            base = os.path.basename(f)
+            m = re.match(r'第(\d+)章_(.+)\.md', base)
+            n, title = int(m.group(1)), m.group(2)
+            outs = glob.glob(f'故事線/{v}/章節/{n:02d}_*.md')
+            if not outs:
+                add('正文', f'{f} 找不到對應的章節大綱')
+                continue
+            ot = read(outs[0])
+            head = re.match(r'# 第 (\d+) 章 · (.+)', ot)
+            pt = read(f)
+            ph = re.match(r'# 第 (\d+) 章 · (.+)', pt)
+            if not ph or int(ph.group(1)) != n or ph.group(2).strip() != head.group(2).strip():
+                add('正文', f'{f} 的標題與章節大綱「{head.group(0)}」不一致')
+            oe = re.search(r'- \*\*對應事件\*\*:(.*)', ot)
+            pe = re.search(r'對應事件:([^\n]*)', pt.split('\n')[2] if len(pt.split('\n')) > 2 else '')
+            ids_o = sorted(re.findall(r'\w+-\d+', oe.group(1) if oe else ''))
+            ids_p = sorted(re.findall(r'\w+-\d+', pe.group(1) if pe else ''))
+            if ids_o != ids_p:
+                add('正文', f'{f} 的對應事件 {ids_p} 與章節大綱 {ids_o} 不一致')
+            if base not in readme and f'{v}/{base}' not in readme:
+                add('正文', f'{f} 未列入正文/README 的進度表')
+
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages_all, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records, check_single_appearance, check_appearance_order):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages_all, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records, check_single_appearance, check_appearance_order, check_prose):
     fn()
 
 if problems:

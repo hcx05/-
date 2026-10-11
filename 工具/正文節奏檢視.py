@@ -166,7 +166,15 @@ def repeated_phrases(files_paras, min_len=6, ext_cap=24):
 
 
 def short_name(path):
-    return os.path.basename(path).replace('.md', '')
+    """含所屬資料夾,避免不同卷的「第1章」混淆。"""
+    parent = os.path.basename(os.path.dirname(os.path.abspath(path)))
+    return f"{parent}/{os.path.basename(path).replace('.md', '')}"
+
+
+def chap_label(name):
+    """『序卷/第3章_劍門秋雨』→『序卷第3章』,讓跨章輸出短而不含糊。"""
+    vol, _, base = name.partition('/')
+    return vol + base.split('_')[0]
 
 
 def main():
@@ -263,9 +271,9 @@ def main():
         reps.sort(key=lambda x: (-len({w[0] for w in x[1]}), -len(x[1]), -len(x[0])))
         for ph, where in reps[:args.limit]:
             files_hit = sorted({w[0] for w in where})
-            locs = ' '.join(f'{w[0][:3]}L{w[1]}' for w in where[:6])
+            locs = ' '.join(f'{chap_label(w[0])}L{w[1]}' for w in where[:6])
             more = '…' if len(where) > 6 else ''
-            print(f'  「{trunc(ph, 30)}」×{len(where)}[{",".join(f[:3] for f in files_hit)}] {locs}{more}')
+            print(f'  「{trunc(ph, 30)}」×{len(where)} {locs}{more}')
         if len(reps) > args.limit:
             print(f'  …另有 {len(reps) - args.limit} 組(--limit 可放寬)')
         if not reps:

@@ -26,8 +26,24 @@ SKIP_PREFIX = ('工具/', '手冊/', '正文/待決/', '重構計畫.md', '開�
                '正文/帳本/補充登記_舊.md', '設計規範/術語表.md', 'AGENTS.md', 'CLAUDE.md')
 
 
+def acknowledged():
+    """設計規範/債務確認.md 第一節的路徑前綴;第二節的場景名稱。"""
+    pref, scenes = [], []
+    pth = '設計規範/債務確認.md'
+    if not L.exists(pth):
+        return pref, scenes
+    for head, cols, rows in L.md_tables(L.read(pth)):
+        if cols and cols[0] == '路徑前綴':
+            for r in rows:
+                pref += re.findall(r'`([^`]+)`', r[0])
+        elif cols and cols[0] == '場景':
+            scenes += [r[0].strip() for r in rows]
+    return pref, scenes
+
+
 def section_a():
     print('## A. 未決標記(待定 / 待填 / 暫定 / 待確認)\n')
+    ack, _ = acknowledged()
     rows = []
     for root, dirs, files in os.walk(L.ROOT):
         dirs[:] = [d for d in dirs if not d.startswith('.')]
@@ -36,7 +52,7 @@ def section_a():
                 continue
             full = os.path.join(root, fn)
             r = L.rel(full)
-            if r.startswith(SKIP_PREFIX):
+            if r.startswith(SKIP_PREFIX) or any(r.startswith(a) for a in ack):
                 continue
             hits = [ln.strip() for ln in L.read(full).split('\n') if MARK.search(ln) and '可逆性' not in ln]
             if hits:
@@ -77,7 +93,10 @@ def section_b(ahead):
     upcoming = [o for o in L.all_outlines() if not last or L.chap_key(o['vol'], o['n']) > L.chap_key(*last)][:ahead] if ahead else None
     up_keys = {(o['vol'], o['n']) for o in upcoming} if upcoming is not None else None
     n = 0
+    _, ack_scenes = acknowledged()
     for name, eids in parse_pending_scenes():
+        if ahead == 0 and name in ack_scenes:
+            continue
         chs = sorted({c for c in (event_chapter(e) for e in eids) if c}, key=lambda x: L.chap_key(*x))
         if not chs:
             for o in L.all_outlines():
@@ -116,12 +135,16 @@ def section_d():
 
 def section_e():
     print('## E. 暫定名\n')
+    left = 0
     for who in ('男主', '女主'):
         pth = f'角色/{who}/README.md'
         for ln in L.read(pth).split('\n'):
             if '暫定名' in ln:
+                left += 1
                 print(f'- {who}:{ln.strip()}')
-    print('\n正式名未定時,敘述用名由稱謂表規定;女主名字何時進入敘述見 正文/待決/Q-001.md。\n')
+    if not left:
+        print('- (無)')
+    print('\n(已於 DEC-079 定為正式名;敘述用名與名字階梯見 正文/技法/稱謂表.md。)\n')
 
 
 def main():

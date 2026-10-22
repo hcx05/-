@@ -134,6 +134,11 @@ ok(not crashed, f'寫作包產生失敗:{crashed[:3]}')
 ok(not over, f'寫作包超出預算:{over[:5]}')
 ok('順序警告' in P.build('第一部', 5), '跳章時寫作包應有順序警告')
 ok('順序警告' not in P.build('第一部', 2), '順序正確時不應有順序警告')
+# 名字階梯(DEC-079):第 2 章可稱知微、不可稱溫知微;第 8 章起可稱溫知微
+nm2 = {w for r in L.naming_for('第一部', 2) if r['角色'] == '女主' for w in r['禁用']}
+nm8 = {w for r in L.naming_for('第一部', 8) if r['角色'] == '女主' for w in r['禁用']}
+ok('溫知微' in nm2 and '知微' not in nm2, f'第一部第2章稱謂規則不符 DEC-079:禁用={nm2}')
+ok(not nm8, f'第一部第8章起女主不應再有禁用稱呼:{nm8}')
 # 場景卡覆蓋檢查
 import 落稿 as W
 problems, ns, npts = W.scene_card_problems('第一部', 2, '# 場景卡\n## 場景 1\n- 地點: x\n- 視角: x\n- 在場: x\n- 目的與衝突: x\n- 對應要點: 1\n- 揭露: x\n- 禁揭: x\n')

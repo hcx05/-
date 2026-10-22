@@ -264,8 +264,8 @@ def check_file(path, require_ledger=True, scene_card=None):
         mb = re.search(r'([\d.]+)\s*萬', o['budget'])
         if mb:
             ratio = hz / (float(mb.group(1)) * 10000)
-            if ratio < 0.45 or ratio > 1.1:
-                warns.append(('W07', 0, f'漢字 {hz},約為大綱預計(含標點 {mb.group(1)} 萬)的 {int(ratio*100)}%(口徑見 Q-002;只供參考)'))
+            if ratio < 0.35 or ratio > 1.3:
+                warns.append(('W07', 0, f'漢字 {hz},約為大綱預計(含標點 {mb.group(1)} 萬)的 {int(ratio*100)}%(僅供參考,DEC-080)'))
 
     # W08 套語與短段密度
     pats = {'不是…而是': r'不是[^。！？\n]{0,14}而是', '直到這時/那一刻': r'直到這時|那一刻|這一刻', '彷彿/仿佛': r'彷彿|仿佛', '忽然': r'忽然', '竟': r'竟'}

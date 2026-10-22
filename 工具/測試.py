@@ -134,6 +134,33 @@ ok(not crashed, f'寫作包產生失敗:{crashed[:3]}')
 ok(not over, f'寫作包超出預算:{over[:5]}')
 ok('順序警告' in P.build('第一部', 5), '跳章時寫作包應有順序警告')
 ok('順序警告' not in P.build('第一部', 2), '順序正確時不應有順序警告')
+# 劇透防火牆:序卷與第一部的寫作包,A/C/D/E/G/H 節不得含本章尚不得出現的詞(硬級)
+leaks = []
+for o in L.all_outlines():
+    if o['vol'] not in ('序卷', '第一部'):
+        continue
+    txt = P.build(o['vol'], o['n'])
+    secs = re.split(r'\n## ([A-I])\. ', txt)
+    d = {secs[i]: secs[i + 1] for i in range(1, len(secs) - 1, 2)}
+    for r in L.reveals_blocked(o['vol'], o['n']):
+        if r['強度'] != '硬':
+            continue
+        for k in 'ACDEGH':
+            if r['詞'] in d.get(k, ''):
+                leaks.append(f"{L.chap_label(o['vol'], o['n'])}/{k}/{r['詞']}")
+ok(not leaks, f'寫作包洩漏尚不得出現的詞:{leaks[:6]}')
+# 輸入雜湊要隨帳本內容改變
+import copy
+h1 = re.search(r'輸入雜湊:([0-9a-f]+)', P.build('第一部', 2)).group(1)
+lp = L.ledger_path('第一部', 1)
+orig = open(lp, encoding='utf8').read()
+try:
+    open(lp, 'w', encoding='utf8').write(orig.replace('未載', '未載(測試)', 1))
+    h2 = re.search(r'輸入雜湊:([0-9a-f]+)', P.build('第一部', 2)).group(1)
+finally:
+    open(lp, 'w', encoding='utf8').write(orig)
+ok(h1 != h2, '帳本內容改變時,寫作包的輸入雜湊應該跟著改變')
+ok(h1 == re.search(r'輸入雜湊:([0-9a-f]+)', P.build('第一部', 2)).group(1), '還原後輸入雜湊應回到原值')
 # 名字階梯(DEC-079):第 2 章可稱知微、不可稱溫知微;第 8 章起可稱溫知微
 nm2 = {w for r in L.naming_for('第一部', 2) if r['角色'] == '女主' for w in r['禁用']}
 nm8 = {w for r in L.naming_for('第一部', 8) if r['角色'] == '女主' for w in r['禁用']}

@@ -26,11 +26,17 @@ def rel(path):
     return os.path.relpath(path, ROOT)
 
 
+RECORD = None  # 設成 dict 時,read() 會把讀過的檔(相對路徑 → 內容)記進去;寫作包用它算輸入雜湊
+
+
 def read(path):
     if not os.path.isabs(path):
         path = p(path)
     with open(path, encoding='utf8') as f:
-        return f.read()
+        text = f.read()
+    if RECORD is not None:
+        RECORD[rel(path)] = text
+    return text
 
 
 def exists(path):
@@ -534,6 +540,11 @@ def reader_knowledge(vol, n, last=3):
     k = chap_key(vol, n)
     outs = [o for o in all_outlines() if chap_key(o['vol'], o['n']) < k]
     return [(o['vol'], o['n'], o['title'], o['sections'].get('資訊揭露', '').strip()) for o in outs[-last:]]
+
+
+def reset_caches():
+    _EV_CACHE.clear()
+    _FIRST_CACHE.clear()
 
 
 def open_questions():

@@ -918,6 +918,31 @@ def check_writing_toolchain():
             probs, _, _ = W.scene_card_problems(mm.group(1), int(mm.group(2)), read(fcard))
             for pr in probs:
                 add('場景卡', f'{fcard}:{pr}')
+    # 揭露表與章節大綱不得互相矛盾:最早章之前,大綱「要演出的段落」不得要求使用該詞(硬級)
+    for r in L.parse_reveals():
+        if r['強度'] != '硬' or not r['first']:
+            continue
+        for o in L.all_outlines():
+            if L.chap_key(o['vol'], o['n']) >= L.chap_key(*r['first']):
+                continue
+            for sec in ('本章目標', '情節要點', '群像補充', '吸引力設計', '結尾與銜接'):
+                if r['詞'] in o['sections'].get(sec, ''):
+                    add('揭露表', f"「{r['詞']}」最早章是{L.chap_label(*r['first'])},但{L.chap_label(o['vol'], o['n'])}大綱〈{sec}〉就用到它:請調整稱謂表或大綱")
+    # 稱謂表:同一角色的區間不得重疊,也不得有缺口(缺口表示那些章節沒有規則)
+    by_role = {}
+    for r in L.parse_naming():
+        by_role.setdefault(r['角色'], []).append(r)
+    for role, rs in by_role.items():
+        rs.sort(key=lambda r: L.chap_key(*r['start']))
+        for x, y in zip(rs, rs[1:]):
+            if x['end'] is None:
+                add('稱謂表', f'{role} 的區間沒有終點卻後面還有規則')
+                continue
+            ex, sy = x['end'], y['start']
+            if L.chap_key(*sy) <= L.chap_key(*ex):
+                add('稱謂表', f'{role} 的區間重疊:{L.chap_label(*x["start"])}–{L.chap_label(*ex)} 與 {L.chap_label(*sy)} 起的規則')
+            elif sy[0] == ex[0] and sy[1] > ex[1] + 1:
+                add('稱謂表', f'{role} 的區間有缺口:{L.chap_label(*ex)} 之後到 {L.chap_label(*sy)} 之前沒有規則')
     # 稱謂表可解析
     if not L.parse_naming():
         add('稱謂表', '正文/技法/稱謂表.md 解析不到任何稱呼規則')

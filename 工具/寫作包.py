@@ -42,6 +42,25 @@ def clip(s, n):
     return L.truncate(s, n)
 
 
+MASK = '〔此詞尚不得出現〕'
+
+
+def scrub(text, words):
+    """遮蔽「本章尚不得出現」的詞(硬級)。條目式的硬規則與設計決定整行移除;其餘以標記取代。
+    目的:資料來源裡的後文劇透不要進入寫作者的上下文。B 節(本章大綱)是本章規格,不遮蔽。"""
+    if not words:
+        return text
+    out = []
+    for ln in text.split('\n'):
+        hit = [w for w in words if w in ln]
+        if hit and re.match(r'- (FACT|DEC)-', ln):
+            continue
+        for w in hit:
+            ln = ln.replace(w, MASK)
+        out.append(ln)
+    return '\n'.join(out)
+
+
 def flat(s):
     """內嵌內容的 Markdown 標題改為粗體,避免和包本身的節標題混淆。"""
     return re.sub(r'(?m)^#{1,6}\s+(.*)$', r'**\1**', s)
@@ -154,7 +173,6 @@ def snapshot_rows(vol):
 def sec_C(o, compact):
     prior = L.ledgers_before(o['vol'], o['n'])
     st = L.fold_ledgers(prior)
-    cast = [c for c in o['cast'] if c in st['chars'] or True]
     snap, snap_vol = snapshot_rows(o['vol'])
     parts = []
     if not prior:
@@ -347,6 +365,27 @@ def thread_rows(o):
     return rows
 
 
+def secret_list(o):
+    """本卷開始時「已在局中」的秘密(取自知情矩陣上一卷結束的時點表):時間正確,不含之後才出現的秘密。
+    序卷沒有前卷時點,回傳 None。回傳 [說明, 'SEC-xxx 標題', …]。"""
+    idx = L.vol_rank(o['vol'])
+    if idx == 0:
+        return None
+    prev = L.VOLS[idx - 1]
+    txt = rd('狀態/秘密知情矩陣.md') or ''
+    m = re.search(rf'## 歷史:{prev}結束\n(.*?)(?=\n## |\Z)', txt, re.S)
+    if not m:
+        return None
+    out = [f'本卷開篇時已在局中的秘密(知情矩陣「{prev}結束」時點;作者知,角色與讀者不一定知)']
+    for head, cols, trs in L.md_tables(m.group(1)):
+        if cols and cols[0] == 'ID' and len(cols) > 3:
+            for r in trs:
+                if any(re.match(r'(知|部分知|疑|誤信)', c) for c in r[2:]):
+                    out.append(f'{r[0]} {clip(r[1], 28)}')
+            break
+    return out if len(out) > 1 else None
+
+
 def sec_F(o, compact):
     parts = []
     nm = L.naming_for(o['vol'], o['n'])
@@ -372,16 +411,12 @@ def sec_F(o, compact):
             later = re.match(r'(序卷|第[一二三]部)', r[3].strip())
             fut = f"預計於{later.group(1)}回收" if later else '回收時點見伏筆登記簿'
             parts.append(f"- {r[0]} {clip(r[1], 50)}:設置 {clip(r[2], 30)};{fut}(細節不在本章揭露);涉及 {'、'.join(touched)}")
-    sec = rd('狀態/秘密知情矩陣.md') or ''
-    secs = []
-    for head, cols, trs in L.md_tables(sec):
-        if cols and cols[0] == 'ID' and len(cols) > 3:
-            for r in trs:
-                secs.append(f'{r[0]} {clip(r[1], 28)}')
-            break
+    secs = secret_list(o)
     if secs:
         parts.append('')
-        parts.append('**全書秘密清單(作者知,角色與讀者不一定知)**:除非本章大綱「資訊揭露」明列可知,一律不揭露、不暗示答案:' + ';'.join(secs[: (8 if compact else 20)]))
+        parts.append(f'**{secs[0]}**:除非本章大綱「資訊揭露」明列可知,不要說破、不要暗示答案:' + ';'.join(secs[1:(9 if compact else 21)]))
+    elif secs is not None:
+        pass
     qs = []
     for q in sorted(os.listdir(L.p('正文', '待決'))):
         if re.match(r'Q-\d+\.md', q):
@@ -495,6 +530,8 @@ def sec_I():
 
 def build(vol, n, compact=False):
     USED.clear()
+    L.reset_caches()
+    L.RECORD = {}
     o = L.get_outline(vol, n)
     if not o:
         raise SystemExit(f'找不到 {vol} 第 {n} 章的章節大綱')
@@ -511,16 +548,21 @@ def build(vol, n, compact=False):
         ('H', '風格樣本(只示語感,不得抄句)', sec_H(o, compact)),
         ('I', '交付格式與自檢', sec_I()),
     ]
+    blocked_hard = [r['詞'] for r in L.reveals_blocked(vol, n) if r['強度'] == '硬']
     body = []
     report = []
     for key, title, text in secs:
         lim = BUDGET[key][idx]
+        if key in ('A', 'C', 'D', 'E', 'G', 'H'):
+            text = scrub(text, blocked_hard)
         # B 與 I 是規格本身,不截斷;只在報表標記超出
         if key not in ('B', 'I'):
             text = clip(text, lim)
         report.append((key, title, len(text), lim))
         body.append(f'## {key}. {title}\n\n{text}\n')
-    digest = L.sha('\n'.join(f'{k}\n{v}' for k, v in sorted(USED.items())))
+    digest = L.sha('\n'.join(f'{k}\n{v}' for k, v in sorted(L.RECORD.items())))
+    nsrc = len(L.RECORD)
+    L.RECORD = None
     label = '精簡包' if compact else '完整包'
     gaps = [oo for oo in L.all_outlines() if L.chap_key(oo['vol'], oo['n']) < L.chap_key(vol, n)
             and not os.path.exists(L.ledger_path(oo['vol'], oo['n']))]
@@ -531,8 +573,9 @@ def build(vol, n, compact=False):
     head = [
         f"# 寫作包 · {vol} · 第 {n} 章 {o['title']}({label})",
         '',
-        f'> 輸入雜湊:{digest}(由 {len(USED)} 個來源檔算出;同一倉庫狀態重跑結果相同)。導出檔,請勿手改;不提交入庫。',
+        f'> 輸入雜湊:{digest}(由 {nsrc} 個實際讀過的檔算出;同一倉庫狀態重跑結果相同)。導出檔,請勿手改;不提交入庫。',
         warn.rstrip('\n') if warn else None,
+        '> 遮蔽:A、C、D、E、G、H 節中「本章尚不得出現」的詞(見 F 節)已以〔此詞尚不得出現〕取代;B 節是本章規格,不遮蔽。',
         '> 用法:這份包是寫本章的**唯一必讀輸入**。需要包外資料時,用 `python3 工具/查詢.py 名稱 --至 ' + f'{vol}{n}' + '`(自動排除未來內容),不要自行翻找未來卷。遇到包內資料互相矛盾或不足以下筆,依[優先序與衝突](../../../手冊/優先序與衝突.md)處理並開待決單,不要自行發明。',
         '',
         '| 節 | 內容 | 字數 | 預算 |',

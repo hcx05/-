@@ -77,7 +77,7 @@ def main():
     for q in L.open_questions():
         if q['狀態'].startswith('待'):
             blockers += 1
-            hit = '(影響範圍涉及下一章)' if re.search(rf"{v}.*{o['n']}|第 {o['n']} ", q['影響']) or ('2 至 9' in q['影響'] and o['n'] in range(2, 10) and v == '第一部') else ''
+            hit = '(影響範圍提到下一章)' if re.search(rf"第 ?{o['n']} ?(章|至)", q['影響']) else ''
             print(f"- 待決 {q['標題']}{hit}。暫行:{L.truncate(q['暫行'], 70, '…')}")
     back = pending_backfill()
     if back:

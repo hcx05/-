@@ -41,7 +41,7 @@ def known_names(o):
     names = set(L.parse_id_map()['角色']) - {'男主', '女主'}
     for al in L.NAME_ALIASES.values():
         names |= set(al)
-    names |= {k for k in L.NAME_ALIASES}
+    names |= {k for k in L.NAME_ALIASES if k not in ('男主', '女主')}
     return names
 
 
@@ -87,6 +87,11 @@ def check_file(path, require_ledger=True, scene_card=None):
                     hi = ages[e][0][1] if hi is None else max(hi, ages[e][0][1])
             if lo is not None and not (lo <= int(mm.group(1)) <= hi):
                 errs.append(('E13', 3, f'引言行寫 {mm.group(1)} 歲,時間線對本章事件的男主歲數是 {lo}' + (f'–{hi}' if hi != lo else '')))
+
+    # E05 引言行也不得有「男主」「女主」(事件編號是引言行的既定格式,不在此限)
+    if len(lines) > 2:
+        for mm in re.finditer(r'男主|女主(?!人)', lines[2]):
+            errs.append(('E05', 3, f'引言行出現規劃用語「{mm.group(0)}」(請改成貼合正文的寫法,例:懷川(14 歲))'))
 
     body_start = 3
     while body_start < len(lines) and not lines[body_start].strip():

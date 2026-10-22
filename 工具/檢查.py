@@ -878,8 +878,44 @@ def check_prose():
                 add('正文', f'{f} 未列入正文/README 的進度表')
 
 
+# 32. 寫作工具鏈:帳本、正文內容檢查、導出檔是否最新、待決單清單(重構後新增)
+def check_writing_toolchain():
+    import importlib
+    import subprocess
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+    L = importlib.import_module('寫作庫')
+    C = importlib.import_module('正文檢查')
+    # 每個已有正文的章必須有帳本,帳本格式與回補路徑由正文檢查驗證
+    for v, n, t, f in L.prose_files():
+        errs, _ = C.check_file(f)
+        for code, ln, msg in errs:
+            add("正文檢查", f"{L.rel(f)}{'(行' + str(ln) + ')' if ln else ''} [{code}] {msg}")
+    # 帳本的章必須有正文
+    for v, n, f in L.ledger_files():
+        if L.prose_path(v, n) is None:
+            add('帳本', f'{f} 沒有對應的正文')
+    # 導出檔
+    here = os.path.dirname(os.path.abspath(__file__))
+    for script, label in (('帳本合併.py', '正文/帳本/累積狀態.md'), ('建索引.py', '索引/')):
+        r = subprocess.run([sys.executable, os.path.join(here, script), '--檢查'], capture_output=True, text=True)
+        if r.returncode != 0:
+            add('導出檔', f'{label} 已過期:{r.stdout.strip()}')
+    # 待決單清單與檔案一致
+    qdir = '正文/待決'
+    if os.path.isdir(qdir):
+        listed = set(re.findall(r'\[(Q-\d+)\]', read(f'{qdir}/README.md')))
+        files = {m.group(1) for x in os.listdir(qdir) for m in [re.match(r'(Q-\d+)\.md', x)] if m}
+        for q in sorted(files - listed):
+            add('待決', f'{qdir}/{q}.md 未列入 {qdir}/README.md 的清單')
+        for q in sorted(listed - files):
+            add('待決', f'{qdir}/README.md 列了 {q},但檔案不存在')
+    # 稱謂表可解析
+    if not L.parse_naming():
+        add('稱謂表', '正文/技法/稱謂表.md 解析不到任何稱呼規則')
+
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages_all, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records, check_single_appearance, check_appearance_order, check_prose):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages_all, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records, check_single_appearance, check_appearance_order, check_prose, check_writing_toolchain):
     fn()
 
 if problems:

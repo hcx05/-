@@ -1,0 +1,18 @@
+name: 檢查
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: 結構檢查(連結、事件、年齡、帳本、導出檔…)
+        run: python3 工具/檢查.py
+      - name: 寫作工具回歸測試
+        run: python3 工具/測試.py

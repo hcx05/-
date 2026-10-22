@@ -94,6 +94,51 @@ for cmd in (['帳本合併.py', '--檢查'], ['建索引.py', '--檢查']):
                        capture_output=True, text=True)
     ok(r.returncode == 0, f'{cmd[0]} 導出檔過期:{r.stdout.strip()}')
 
+print('6. 新增機制')
+# E13:引言行年齡與時間線
+path = make('第一部', 1, T1, '正常的一段。\n', head=f"# 第 1 章 · {T1}\n\n> 視角:陸懷川 30 歲 ｜ 時間:測試 ｜ 對應事件:{'、'.join(L.get_outline('第一部', 1)['events'])}\n\n")
+e, w = codes(path, require_ledger=False)
+ok('E13' in e, f'引言行年齡錯誤應偵測 E13,實得 {e}')
+# W10:名稱早於計畫首現(高承嗣在第一部第 28 章才出場)
+path = make('第一部', 1, T1, '他想起一個叫鄭成的人。\n')
+first = L.first_appearances()
+early = [n for n, r in first.items() if (r['cast'] or r['mention']) and L.chap_key(*(r['cast'] or r['mention'])) > L.chap_key('第一部', 1) and L.get_outline('第一部', 1)['text'].count(n) == 0]
+if early:
+    path = make('第一部', 1, T1, f'遠處傳來{early[0]}的名字。\n')
+    e, w = codes(path, require_ledger=False)
+    ok('W10' in w, f'名稱早於首現應有提示 W10({early[0]}),實得 {w}')
+# E14:帳本草稿不能當正式帳本
+import subprocess
+here = os.path.dirname(os.path.abspath(__file__))
+draft = subprocess.run([sys.executable, os.path.join(here, '帳本草稿.py'), '第一部', '1'], capture_output=True, text=True).stdout
+ok('(待填' in draft and '## 要點對照' in draft, '帳本草稿應含 (待填) 與要點對照骨架')
+# 盲測比對:同一份帳本比對自己 = 100%
+real = L.rel(L.ledger_path('第一部', 1))
+r = subprocess.run([sys.executable, os.path.join(here, '盲測比對.py'), real, real], capture_output=True, text=True)
+ok('**100%**' in r.stdout, '同一份帳本互比應為 100% 一致')
+# 其餘工具能跑完
+for cmd in (['進度.py'], ['回補清單.py'], ['債務掃描.py'], ['聲口萃取.py', '--每人', '2'], ['影響掃描.py', '序卷', '3', '--每詞上限', '1'], ['寫作包.py', '第一部', '3', '--stdout']):
+    r = subprocess.run([sys.executable, os.path.join(here, cmd[0])] + cmd[1:], capture_output=True, text=True)
+    ok(r.returncode == 0 and r.stdout.strip(), f'{cmd[0]} 應能執行:{r.stderr.strip()[-120:]}')
+# 全書 145 章的寫作包都能產生,且不超出預算
+over, crashed = [], []
+for o in L.all_outlines():
+    try:
+        txt = P.build(o['vol'], o['n'])
+        for m in re.findall(r'\| ([A-I]) \| ([^|]+) \| (\d+) \| (\d+)(\(超出\))?', txt):
+            if m[4]:
+                over.append(f"{o['vol']}{o['n']}{m[0]}")
+    except Exception as ex:  # noqa
+        crashed.append(f"{o['vol']}{o['n']}:{ex!r}")
+ok(not crashed, f'寫作包產生失敗:{crashed[:3]}')
+ok(not over, f'寫作包超出預算:{over[:5]}')
+ok('順序警告' in P.build('第一部', 5), '跳章時寫作包應有順序警告')
+ok('順序警告' not in P.build('第一部', 2), '順序正確時不應有順序警告')
+# 場景卡覆蓋檢查
+import 落稿 as W
+problems, ns, npts = W.scene_card_problems('第一部', 2, '# 場景卡\n## 場景 1\n- 地點: x\n- 視角: x\n- 在場: x\n- 目的與衝突: x\n- 對應要點: 1\n- 揭露: x\n- 禁揭: x\n')
+ok(any('沒有被任何場景涵蓋' in x for x in problems), '場景卡缺要點應被偵測')
+
 if fails:
     print(f'\n{len(fails)} 項失敗')
     sys.exit(1)

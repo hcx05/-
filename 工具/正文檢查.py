@@ -75,6 +75,19 @@ def check_file(path, require_ledger=True, scene_card=None):
         if ids != sorted(o['events']):
             errs.append(('E02', 3, f'對應事件 {ids} 與章節大綱 {sorted(o["events"])} 不一致'))
 
+    # E13 引言行的男主歲數須落在本章事件對應的時間線區間
+    if o and len(lines) > 2:
+        mm = re.search(r'(\d+)\s*歲', lines[2])
+        if mm:
+            ages = L.timeline_ages(vol)
+            lo = hi = None
+            for e in o['events']:
+                if e in ages and ages[e][0]:
+                    lo = ages[e][0][0] if lo is None else min(lo, ages[e][0][0])
+                    hi = ages[e][0][1] if hi is None else max(hi, ages[e][0][1])
+            if lo is not None and not (lo <= int(mm.group(1)) <= hi):
+                errs.append(('E13', 3, f'引言行寫 {mm.group(1)} 歲,時間線對本章事件的男主歲數是 {lo}' + (f'–{hi}' if hi != lo else '')))
+
     body_start = 3
     while body_start < len(lines) and not lines[body_start].strip():
         body_start += 1
@@ -132,7 +145,11 @@ def check_file(path, require_ledger=True, scene_card=None):
             msg = f'「{w}」最早到{L.chap_label(*r["first"])}才可出現({r["依據"]})'
             (errs if r['強度'] == '硬' else warns).append(('E09' if r['強度'] == '硬' else 'W02', ln, msg))
 
-    # 場景卡禁揭詞
+    # 場景卡禁揭詞(沒指定時,自動找 正文/計畫/{卷}/第NN章.場景卡.md)
+    if not scene_card:
+        auto = L.p('正文', '計畫', vol, f'第{n:02d}章.場景卡.md')
+        if os.path.exists(auto):
+            scene_card = auto
     if scene_card:
         sc = L.read(scene_card)
         for mm in re.finditer(r'^- \*?\*?禁揭詞\*?\*?:(.*)$', sc, re.M):
@@ -150,6 +167,8 @@ def check_file(path, require_ledger=True, scene_card=None):
         lg = L.parse_ledger(lp)
         for e in lg['errors']:
             errs.append(('E11', 0, f'帳本格式:{e}'))
+        if '(待填' in lg['text']:
+            errs.append(('E14', 0, '帳本仍有「(待填)」欄位,這是草稿,請補完'))
         if not lg['errors'] and o:
             cov = set()
             for r in lg['tables'].get('要點對照', []):
@@ -215,12 +234,29 @@ def check_file(path, require_ledger=True, scene_card=None):
     cand = {}
     for mm in re.finditer(r'(?:^|[。！？」，、；\s])([\u4e00-\u9fff]{2,3})(?:問道|說道|笑道|喝道|罵道|答道|嘆道|叫道|道)(?=[:：，,「])', body, re.M):
         w = mm.group(1)
-        if w in PRONOUN_STOP or w in allow or any(w in a for a in allow) or w[-1] in '地著音聲氣的了' or w[0] == '用':
+        if w in PRONOUN_STOP or w in allow or any(w in a for a in allow) or w[-1] in '地著音聲氣的了' or w[0] in '用他她它':
             continue
         cand[w] = cand.get(w, 0) + 1
     if cand:
         top = '、'.join(f'{k}×{v}' for k, v in sorted(cand.items(), key=lambda t: -t[1])[:6])
         warns.append(('W06', 0, f'說話標記前出現未登記的稱呼:{top}(若是新人物,登記到帳本「新增專名」)'))
+
+    # W10 名稱早於計畫首現(章節大綱的「出場角色」)。提示級:大綱可能漏列
+    first = L.first_appearances()
+    here = L.chap_key(vol, n)
+    early = []
+    for nm, rec in first.items():
+        if nm not in body or len(nm) < 2:
+            continue
+        cast_at = rec['cast']
+        mention_at = rec['mention']
+        if o and nm in o['text']:
+            continue
+        planned = cast_at or mention_at
+        if planned is not None and L.chap_key(*planned) > here:
+            early.append(f'{nm}(計畫首現 {L.chap_label(*planned)})')
+    if early:
+        warns.append(('W10', 0, '名稱早於章節大綱安排的首現:' + '、'.join(early[:6]) + '(確認不是提前劇透;若是有意,先補章節大綱或開待決單)'))
 
     # W07 字數
     hz = L.han_count(body)

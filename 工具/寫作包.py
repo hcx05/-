@@ -21,7 +21,7 @@ import 寫作庫 as L
 # 各節字數預算(完整, 精簡)
 BUDGET = {
     'A': (2500, 1500), 'B': (6000, 4200), 'C': (3500, 2200), 'D': (4500, 2600),
-    'E': (2500, 1200), 'F': (2600, 1600), 'G': (3200, 1800), 'H': (2200, 900), 'I': (1500, 900),
+    'E': (2500, 1200), 'F': (2600, 1600), 'G': (3900, 2200), 'H': (2200, 900), 'I': (1500, 900),
 }
 
 USED = {}  # 路徑 → 內容,用來算輸入雜湊
@@ -109,7 +109,14 @@ def sec_A(o, keys, compact):
 
 
 def sec_B(o, compact):
-    parts = ['**章節大綱(正本:`' + o['path'] + '`)**', '', o['text'].strip(), '']
+    parts = []
+    patches = [(h, b_) for h, b_ in o['sections'].items() if re.search(r'增補|改版|對齊|DEC-\d+', h)]
+    if patches:
+        parts.append('**大綱補丁(下列段落是後來才加的修正;與大綱本文衝突時,以補丁為準)**')
+        for h, b_ in patches:
+            parts.append(f'- 〈{h}〉:' + re.sub(r'\s*\n\s*', ' ', b_.strip()))
+        parts.append('')
+    parts += ['**章節大綱(正本:`' + o['path'] + '`)**', '', o['text'].strip(), '']
     evs = L.all_events()
     parts.append('**對應事件(演出)**')
     for e in o['events']:
@@ -420,6 +427,13 @@ def sec_G(o, compact):
     if sums:
         parts.append('**近章摘要(帳本)**')
         parts += [clip(s_, 360) for s_ in sums]
+    rk = L.reader_knowledge(o['vol'], o['n'], 3)
+    if rk:
+        parts.append('')
+        parts.append('**讀者此刻應已得知的事(依前三章大綱「資訊揭露」的計畫值;實況以上列摘要與帳本為準)**')
+        for v, c, t, txt in rk:
+            if txt:
+                parts.append(f'- {L.chap_label(v, c)} {t}:' + clip(re.sub(r'\s*\n\s*', ' ', txt), 240))
     pv, pc = prev
     parts.append('')
     parts.append(f'**前章({L.chap_label(pv, pc)})結尾原文**(銜接用,不得照抄)')
@@ -508,10 +522,17 @@ def build(vol, n, compact=False):
         body.append(f'## {key}. {title}\n\n{text}\n')
     digest = L.sha('\n'.join(f'{k}\n{v}' for k, v in sorted(USED.items())))
     label = '精簡包' if compact else '完整包'
+    gaps = [oo for oo in L.all_outlines() if L.chap_key(oo['vol'], oo['n']) < L.chap_key(vol, n)
+            and not os.path.exists(L.ledger_path(oo['vol'], oo['n']))]
+    warn = ''
+    if gaps:
+        names = '、'.join(L.chap_label(g['vol'], g['n']) for g in gaps[:5]) + ('…' if len(gaps) > 5 else '')
+        warn = f'> ⚠ **順序警告**:本章之前還有 {len(gaps)} 章沒有帳本({names}),章前狀態與前文接續不完整。依序寫完前面的章再寫本章;若只是預覽,資料僅供參考,不可據此定稿。\n'
     head = [
         f"# 寫作包 · {vol} · 第 {n} 章 {o['title']}({label})",
         '',
         f'> 輸入雜湊:{digest}(由 {len(USED)} 個來源檔算出;同一倉庫狀態重跑結果相同)。導出檔,請勿手改;不提交入庫。',
+        warn.rstrip('\n') if warn else None,
         '> 用法:這份包是寫本章的**唯一必讀輸入**。需要包外資料時,用 `python3 工具/查詢.py 名稱 --至 ' + f'{vol}{n}' + '`(自動排除未來內容),不要自行翻找未來卷。遇到包內資料互相矛盾或不足以下筆,依[優先序與衝突](../../../手冊/優先序與衝突.md)處理並開待決單,不要自行發明。',
         '',
         '| 節 | 內容 | 字數 | 預算 |',
@@ -520,6 +541,7 @@ def build(vol, n, compact=False):
     for key, title, size, lim in report:
         flag = '' if size <= lim or key in ('B', 'I') else '(超出)'
         head.append(f'| {key} | {title} | {size} | {lim}{flag} |')
+    head = [h for h in head if h is not None]
     head.append('')
     return '\n'.join(head) + '\n' + '\n'.join(body)
 

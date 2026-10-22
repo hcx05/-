@@ -221,17 +221,21 @@ def parse_id_map():
     return res
 
 
-# 男女主與少數角色在正文中的名字/別名(僅供辨識人名;敘述用名以稱謂表為準)
-NAME_ALIASES = {
-    '男主': ['陸懷川', '懷川'],
-    '女主': [],
-    '呼延阿古': ['阿古'],
-    '秦七': ['七叔', '老七'],
-    '溫素問': ['素問'],
-    '晏明徽': [],
-    '陸驍': [],
-    '蕭婉': [],
-}
+# 人名別名:資料在 正文/技法/稱謂表.md 第三節(「正名 | 別名」),載入後填入下面這個 dict。
+# 新增別名請改該表,不要改程式。(敘述用名仍以稱謂表第一節為準;這裡只供辨識「這是誰」。)
+NAME_ALIASES = {}
+
+
+def load_aliases():
+    NAME_ALIASES.clear()
+    pth = '正文/技法/稱謂表.md'
+    if not exists(pth):
+        return
+    for head, cols, trs in md_tables(read(pth)):
+        if cols[:2] == ['正名', '別名']:
+            for r in trs:
+                al = [x.strip() for x in re.split(r'[、,，]', r[1]) if x.strip() and x.strip() not in ('—', '-')]
+                NAME_ALIASES[r[0]] = al
 
 
 def char_dir(name):
@@ -478,3 +482,77 @@ def truncate(s, limit, note='…(略,用 工具/查詢.py 取全文)'):
     if len(s) <= limit:
         return s
     return s[:max(0, limit - len(note))].rstrip() + note
+
+
+# ---------- 時間線年齡、首現、讀者知識 ----------
+
+def timeline_ages(vol):
+    """時間線 → {事件ID: ((男主最小,最大), (女主最小,最大))};「9–12」這類區間取兩端,「—」為 None。"""
+    pth = f'故事線/{vol}/時間線.md'
+    if not exists(pth):
+        return {}
+
+    def rng(cell):
+        nums = [int(x) for x in re.findall(r'\d+', cell)]
+        return (min(nums), max(nums)) if nums else None
+
+    out = {}
+    for head, cols, rows in md_tables(read(pth)):
+        if '事件 ID' in cols and '男主' in cols:
+            i, a, b = cols.index('事件 ID'), cols.index('男主'), cols.index('女主')
+            for r in rows:
+                if len(r) > max(i, a, b):
+                    out[r[i]] = (rng(r[a]), rng(r[b]))
+    return out
+
+
+_FIRST_CACHE = {}
+
+
+def first_appearances():
+    """依章節大綱算出每個登記名稱(角色、勢力)的計畫首現:
+    {名稱: {'cast': (卷,章)或None, 'mention': (卷,章)或None}}。cast = 列入「出場角色」;mention = 大綱任何位置提到。"""
+    if _FIRST_CACHE:
+        return _FIRST_CACHE
+    idm = parse_id_map()
+    names = [n for n in list(idm['角色']) + list(idm['勢力']) if n not in ('男主', '女主') and len(n) >= 2]
+    for n in names:
+        _FIRST_CACHE[n] = {'cast': None, 'mention': None}
+    for o in all_outlines():
+        key = (o['vol'], o['n'])
+        for n in names:
+            rec = _FIRST_CACHE[n]
+            if rec['cast'] is None and n in o['cast']:
+                rec['cast'] = key
+            if rec['mention'] is None and n in o['text']:
+                rec['mention'] = key
+    return _FIRST_CACHE
+
+
+def reader_knowledge(vol, n, last=3):
+    """截至 (vol, n) 之前最近 last 章,章節大綱「資訊揭露」所安排讀者得知的內容(計畫值,以帳本實況為準)。"""
+    k = chap_key(vol, n)
+    outs = [o for o in all_outlines() if chap_key(o['vol'], o['n']) < k]
+    return [(o['vol'], o['n'], o['title'], o['sections'].get('資訊揭露', '').strip()) for o in outs[-last:]]
+
+
+def open_questions():
+    """待決單 → [{id, 標題, 狀態, 暫行, 影響}]。"""
+    d = p('正文', '待決')
+    out = []
+    if not os.path.isdir(d):
+        return out
+    for f in sorted(os.listdir(d)):
+        m = re.fullmatch(r'(Q-\d+)\.md', f)
+        if not m:
+            continue
+        t = read(os.path.join(d, f))
+        st = re.search(r'\*\*狀態\*\*:(.*)', t)
+        zh = re.search(r'\*\*暫行做法\*\*:(.*)', t)
+        sc = re.search(r'\*\*影響範圍\*\*:(.*)', t)
+        out.append({'id': m.group(1), '標題': t.split('\n')[0][2:].strip(), '狀態': st.group(1).strip() if st else '',
+                    '暫行': zh.group(1).strip() if zh else '', '影響': sc.group(1).strip() if sc else ''})
+    return out
+
+
+load_aliases()

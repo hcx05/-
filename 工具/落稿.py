@@ -127,12 +127,12 @@ def cmd_decision(src):
     print(f'已存 正文/待決/{q}.md;請同步更新 正文/待決/README.md 的清單')
 
 
-def cmd_scene_card(vol, n, src):
+def scene_card_problems(vol, n, text):
+    """回傳 (問題清單, 場景數, 要點數)。"""
     o = L.get_outline(vol, n)
-    text = read_input(src)
     scenes = re.split(r'\n(?=## 場景\s*\d+)', text)[1:]
     if not scenes:
-        raise SystemExit('場景卡需要「## 場景 N」區段')
+        return ['場景卡需要「## 場景 N」區段'], 0, len(o['points'])
     covered = set()
     problems = []
     for sc in scenes:
@@ -149,12 +149,17 @@ def cmd_scene_card(vol, n, src):
     missing = [k for k, _ in o['points'] if k not in covered]
     if missing:
         problems.append(f'大綱情節要點 {missing} 沒有被任何場景涵蓋')
+    return problems, len(scenes), len(o['points'])
+
+
+def cmd_scene_card(vol, n, src):
+    problems, ns, npts = scene_card_problems(vol, n, read_input(src))
     if problems:
         print('場景卡有問題:')
         for p_ in problems:
             print('  - ' + p_)
         sys.exit(1)
-    print(f'場景卡通過:{len(scenes)} 個場景涵蓋全部 {len(o["points"])} 個情節要點')
+    print(f'場景卡通過:{ns} 個場景涵蓋全部 {npts} 個情節要點')
 
 
 def main():

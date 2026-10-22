@@ -909,6 +909,15 @@ def check_writing_toolchain():
             add('待決', f'{qdir}/{q}.md 未列入 {qdir}/README.md 的清單')
         for q in sorted(listed - files):
             add('待決', f'{qdir}/README.md 列了 {q},但檔案不存在')
+    # 場景卡(若已建立)須涵蓋全部情節要點
+    L_ = L
+    W = importlib.import_module('落稿')
+    for fcard in sorted(glob.glob('正文/計畫/*/第*章.場景卡.md')):
+        mm = re.search(r'計畫/(.+?)/第(\d+)章\.場景卡\.md', fcard.replace(os.sep, '/'))
+        if mm and L_.get_outline(mm.group(1), int(mm.group(2))):
+            probs, _, _ = W.scene_card_problems(mm.group(1), int(mm.group(2)), read(fcard))
+            for pr in probs:
+                add('場景卡', f'{fcard}:{pr}')
     # 稱謂表可解析
     if not L.parse_naming():
         add('稱謂表', '正文/技法/稱謂表.md 解析不到任何稱呼規則')

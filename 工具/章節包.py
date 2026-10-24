@@ -241,6 +241,17 @@ def prev_tail(pv, pk):
     return ''
 
 
+def prev_points(outline_file):
+    """前章正文尚未寫成時的替代:取前章大綱的「情節要點」與「注意事項」,供本章與前章逐項對齊。"""
+    t = read(outline_file)
+    parts = []
+    for h in ('情節要點', '注意事項'):
+        m = re.search(r'## ' + h + r'\n(.*?)(?=\n## |\Z)', t, re.S)
+        if m and m.group(1).strip():
+            parts.append(f'**{h}**\n{m.group(1).strip()}')
+    return '\n\n'.join(parts)
+
+
 def ending_of(outline_file):
     t = read(outline_file)
     m = re.search(r'## 結尾與銜接\n(.*?)(?=\n## |\Z)', t, re.S)
@@ -277,6 +288,7 @@ def build(vol, n):
     section(out, '四、前章銜接', '\n\n'.join(x for x in (
         f'前章 {pc[0]}·第 {pc[1]} 章大綱的「結尾與銜接」:\n' + ending_of(outline_path(*pc)) if pc else '',
         prev_tail(*pc) if pc else '',
+        ('(前章正文尚未寫成;以下是前章大綱的要點,本章須與之逐項對齊,細節與本章大綱衝突時先查前章大綱)\n\n' + prev_points(outline_path(*pc))) if pc and not prev_tail(*pc) else '',
         prev_summary(vol, n)) if x))
     if prev_vol:
         section(out, f'五、出場者的卷初狀態(來源:狀態/{prev_vol}結束/角色狀態.md;卷內變化見第七節)', snapshot_rows(prev_vol, names))

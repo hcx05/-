@@ -878,8 +878,48 @@ def check_prose():
                 add('正文', f'{f} 未列入正文/README 的進度表')
 
 
+# 32. 代價帳與選項對照:格式、事件 ID 與必填項
+def check_cost_and_options():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('代價帳', '工具/代價帳.py')
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for x in mod.problems():
+        add('代價帳', x)
+    tl, _, _, _ = mod.Q.load_all()
+    known = {r['id'] for v in mod.Q.VOLS for r in tl[v]}
+    for f in sorted(glob.glob('設計規範/選項對照/OPT-*.md')):
+        t = read(f)
+        m = re.match(r'# OPT-(\d+) \S', t)
+        if not m or not os.path.basename(f).startswith(f'OPT-{m.group(1)}_'):
+            add('選項對照', f'{f} 的標題須為「# OPT-編號 主題」且與檔名編號一致')
+        for label in ('起因', '涉及事件', '日期'):
+            if not re.search(r'- \*\*' + label + r'\*\*:\S', t):
+                add('選項對照', f'{f} 缺少「{label}」')
+        m2 = re.search(r'- \*\*涉及事件\*\*:(.*)', t)
+        for i in re.findall(r'(?<![A-Za-z0-9])(?:PRO|P[123])-\d+', m2.group(1) if m2 else ''):
+            if i not in known:
+                add('選項對照', f'{f} 的涉及事件 {i} 不在時間線')
+        plans = re.split(r'(?m)^## 方案 ', t)[1:]
+        if len(plans) < 3:
+            add('選項對照', f'{f} 至少要有 3 個方案(目前 {len(plans)})')
+        for pl in plans:
+            name = pl.split('\n')[0].strip()
+            body = pl.split('\n## ')[0]
+            for label in ('做法', '主角付出的代價', '可預測度', '後續分支', '變更範圍'):
+                if not re.search(r'- \*\*' + label + r'\*\*:\S', body):
+                    add('選項對照', f'{f} 方案「{name}」缺少「{label}」')
+        c = re.search(r'(?m)^## 結論\n(.*)', t, re.S)
+        if not c:
+            add('選項對照', f'{f} 缺少「結論」')
+        else:
+            for label in ('選擇', '理由', 'DEC'):
+                if not re.search(r'- \*\*' + label + r'\*\*:\S', c.group(1)):
+                    add('選項對照', f'{f} 的結論缺少「{label}」')
+
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages_all, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records, check_single_appearance, check_appearance_order, check_prose):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages_all, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records, check_single_appearance, check_appearance_order, check_prose, check_cost_and_options):
     fn()
 
 if problems:

@@ -327,7 +327,7 @@ def main(argv):
     # D 負載與節奏
     streaks = {}
     P('## D 負載與節奏(演出事件,依事件標籤的類型:緩衝/推進/重)\n')
-    P('| 卷 | 緩衝 | 推進 | 重 | 最長連續無緩衝(事件數) | 第一個「重」的位置 | 「重」事件的十等分分布 | 末三分之一章的事件密度/全卷 |')
+    P('| 卷 | 緩衝 | 推進 | 重 | 最長連續無緩衝(事件數:標籤口徑 / 嚴格口徑) | 第一個「重」的位置 | 「重」事件的十等分分布 | 末三分之一章的事件密度/全卷 |')
     P('|---|---|---|---|---|---|---|---|')
     for v in VOLS:
         evs = [r for r in tl[v] if r['kind'] == '演出']
@@ -335,13 +335,20 @@ def main(argv):
             continue
         types = [event_type(r['tags'], tt) for r in evs]
         c = collections.Counter(types)
-        run = best = 0
-        best_end = -1
-        for k, t in enumerate(types):
-            run = run + 1 if t != '緩衝' else 0
-            if run > best:
-                best, best_end = run, k
-        streaks[v] = (best, evs[best_end - best + 1]['ch'], evs[best_end]['ch']) if best else (0, 0, 0)
+        # 兩種口徑:標籤口徑與 標籤檢視.py、標籤表一致,事件帶任一緩衝類標籤即算有緩衝;
+        # 嚴格口徑要事件的標籤全是緩衝類才算(帶溫情、幽默卻同時帶伏筆、懸念的事件不算)
+        def longest(has_buffer):
+            run = best = 0
+            best_end = -1
+            for k, r in enumerate(evs):
+                run = 0 if has_buffer(r, types[k]) else run + 1
+                if run > best:
+                    best, best_end = run, k
+            return (best, evs[best_end - best + 1]['ch'], evs[best_end]['ch']) if best else (0, 0, 0)
+        tag_run = longest(lambda r, t: any(tt.get(x) == '緩衝' for x in r['tags']))
+        strict_run = longest(lambda r, t: t == '緩衝')
+        best = f'{tag_run[0]} / {strict_run[0]}'
+        streaks[v] = (tag_run, strict_run)
         heavy = [i for i, t in enumerate(types) if t == '重']
         hist = [0] * 10
         for i in heavy:
@@ -353,7 +360,8 @@ def main(argv):
         first = f'{heavy[0] / len(types):.0%}' if heavy else '—'
         P(f"| {v} | {c['緩衝'] / len(types):.0%} | {c['推進'] / len(types):.0%} | {c['重'] / len(types):.0%} | {best} | {first} | {'/'.join(map(str, hist))} | {ratio:.2f} |")
     P('\n- 末三分之一章的事件密度/全卷 > 1.3 代表收尾段超載(事件擠在最後幾章,容易趕);< 0.7 代表尾段鬆散。')
-    P('- 最長連續無緩衝段落的位置:' + ';'.join(f'{v} 第 {a}–{b} 章(連續 {n} 個事件)' for v, (n, a, b) in streaks.items() if n))
+    P('- 最長連續無緩衝段落的位置(標籤口徑):' + ';'.join(f'{v} 第 {a}–{b} 章(連續 {n} 個事件)' for v, ((n, a, b), _) in streaks.items() if n))
+    P('- 嚴格口徑(僅供參考):' + ';'.join(f'{v} 第 {a}–{b} 章(連續 {n} 個事件)' for v, (_, (n, a, b)) in streaks.items() if n))
     P('')
     P('### D2 視角平衡(章節大綱「視角」欄)\n')
     P('| 卷 | 只男主 | 只女主 | 男女交錯 | 群像或其他 | 單人視角平衡(少/多) |')

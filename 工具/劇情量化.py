@@ -411,10 +411,16 @@ def main(argv):
             court_chapters.append((v, ch, ci[v].get(ch, {}).get('title', ''), a, b))
         P(f"| {v} | {len(evs)} | {n_c} | {n_c / max(1, len(evs)):.0%} | {len(heavy)} / {chapter_count(v)} |")
     P('\n朝堂傾向過半的章(供 DEC-074 逐章裁定:保留、改成江湖視角,或縮成遠景):\n')
-    P('| 卷·章 | 標題 | 朝堂傾向事件 / 演出事件 |')
-    P('|---|---|---|')
+    P('| 卷·章 | 標題 | 朝堂傾向事件 / 演出事件 | 裁定 |')
+    P('|---|---|---|---|')
+    ruled = {}
+    for c in table(read('設計規範/DEC-074裁定表.md')):
+        m = re.match(r'(第.部)·第 (\d+) 章', c[0]) if c else None
+        if m and len(c) >= 6 and c[4] in ('保留', '改江湖視角', '縮成遠景'):
+            ruled[(m.group(1), int(m.group(2)))] = c[4]
     for v, ch, t, a, b in court_chapters:
-        P(f'| {v}·第 {ch} 章 | {t} | {a} / {b} |')
+        P(f"| {v}·第 {ch} 章 | {t} | {a} / {b} | {ruled.get((v, ch), '待裁定')} |")
+    P(f"\n已裁定 {sum((v, ch) in ruled for v, ch, *_ in court_chapters)} / {len(court_chapters)} 章(正本:設計規範/DEC-074裁定表.md)。")
     P('')
 
     # G 改編就緒度

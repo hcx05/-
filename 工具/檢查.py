@@ -176,8 +176,9 @@ def check_ratio():
                 c[m.group(3)] = c.get(m.group(3), 0) + b - a + 1
         n = sum(c.values())
         pct = c.get('同行', 0) / n * 100 if n else 0
-        if not 30 <= pct <= 40:
-            add('占比', f'{f} 同行占比 {pct:.0f}%(目標 30%–40%)')
+        lo = 46 if '第三部' in f else 39.5   # DEC-086:第一、二部 ≥39.5%,第三部 ≥46%(宏觀聲明須與 D4 實測同步)
+        if pct < lo:
+            add('占比', f'{f} 同行占比 {pct:.0f}%(下限 {lo:g}%,DEC-086)')
         for k, v in c.items():
             tot[k] = tot.get(k, 0) + v
 

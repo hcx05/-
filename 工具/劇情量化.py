@@ -409,12 +409,51 @@ def main(argv):
                     run = 0
             return best
         out_run, all_run = longest_zero(True), longest_zero(False)
-        d4[v] = {'n': n, 'together': together, 'ratio': together / n, 'out_run': out_run[0],
+        lines = collections.Counter()      # 線別(《占比與分線》):同行 / 男主線 / 女主線 / 群像
+        for ch in range(1, n + 1):
+            cs = by_ch[ch]
+            if cs and sum(co(c) for c in cs) * 2 >= len(cs):
+                lines['同行'] += 1
+            elif not cs or sum(not (set(c) & set(LEADS)) for c in cs) * 2 > len(cs):
+                lines['群像'] += 1
+            elif sum(LEADS[0] in c and LEADS[1] not in c for c in cs) >= sum(LEADS[1] in c and LEADS[0] not in c for c in cs):
+                lines['男主線'] += 1
+            else:
+                lines['女主線'] += 1
+        d4[v] = {'lines': lines, 'n': n, 'together': together, 'ratio': together / n, 'out_run': out_run[0],
                  'male': sum(LEADS[0] in c for c in allev) / len(allev), 'female': sum(LEADS[1] in c for c in allev) / len(allev),
                  'neither': sum(not (set(c) & set(LEADS)) for c in allev) / len(allev)}
         P(f"| {v} | {together} / {n}({together / n:.0%}) | {sum(co(c) for c in allev) / len(allev):.0%} | {len(zero)} / {n} | "
           f"{out_run[0]}" + (f"({out_run[1]}–{out_run[2]})" if out_run[0] else '') + f" | {all_run[0]}" + (f"({all_run[1]}–{all_run[2]})" if all_run[0] else '') +
           f" | {d4[v]['male']:.0%} | {d4[v]['female']:.0%} | {d4[v]['neither']:.0%} |")
+    # 宏觀大綱(故事大綱/第N部_*.md)逐章聲明的線別,與出場角色實測對照:聲明同行而實測不是,多半是事件出場欄漏列(W15 S3 的盤點輸入)
+    macro = {'第一部': '故事大綱/第一部_少年遊.md', '第二部': '故事大綱/第二部_離亂行.md', '第三部': '故事大綱/第三部_補天錄.md'}
+    decl_gap = []
+    for v in VOLS[1:]:
+        declared = {}
+        for line in read(macro[v]).split('\n'):
+            m = re.match(r'- 第 (\d+)(?:–(\d+))? 章【(\w+)】', line)
+            if m:
+                for c in range(int(m.group(1)), int(m.group(2) or m.group(1)) + 1):
+                    declared[c] = m.group(3)
+        by_ch = collections.defaultdict(list)
+        for r in tl[v]:
+            if r['kind'] == '演出' and r['id'] in ev[v]:
+                by_ch[r['ch']].append(set(ev[v][r['id']]['chars']))
+        meas = {ch for ch in range(1, chapter_count(v) + 1)
+                if by_ch[ch] and sum(LEADS[0] in c and LEADS[1] in c for c in by_ch[ch]) * 2 >= len(by_ch[ch])}
+        dec = {c for c, t in declared.items() if t == '同行'}
+        decl_gap.append((v, len(dec), sorted(dec - meas), sorted(meas - dec)))
+    P('\n宏觀大綱聲明的同行章 vs 實測:')
+    for v, nd, a, b in decl_gap:
+        P(f"- {v}:聲明 {nd} 章;聲明同行而實測不是 {len(a)} 章({'、'.join(map(str, a)) or '無'});實測同行而未聲明 {len(b)} 章({'、'.join(map(str, b)) or '無'})")
+    P('\n線別(依章分類,與《占比與分線》同口徑):同行 = 同行章;群像 = 半數以上事件兩人都不在場;其餘依單人事件較多者歸男主線或女主線。\n')
+    P('| 卷 | 同行 | 男主線 | 女主線 | 群像 |')
+    P('|---|---|---|---|---|')
+    for v in VOLS[1:]:
+        l = d4[v]['lines']
+        P(f"| {v} | {l['同行']} | {l['男主線']} | {l['女主線']} | {l['群像']} |")
+    P('')
     tot_t, tot_n = sum(d4[v]['together'] for v in d4), sum(d4[v]['n'] for v in d4)
     P('')
     for v in ('第一部', '第二部'):

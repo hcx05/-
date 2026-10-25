@@ -918,8 +918,20 @@ def check_cost_and_options():
                     add('選項對照', f'{f} 的結論缺少「{label}」')
 
 
+def check_experience():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('體驗模擬', '工具/體驗模擬.py')
+    mod = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, os.path.dirname(os.path.abspath('工具/體驗模擬.py')))
+    spec.loader.exec_module(mod)
+    for x in mod.problems():
+        add('體驗模擬', x)
+    for x in mod.selftest():
+        add('體驗模擬', '自測失敗:' + x)
+
+
 for fn in (check_links, check_symmetry, check_power_cap, check_events, check_ratio, check_state_power,
-           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages_all, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records, check_single_appearance, check_appearance_order, check_prose, check_cost_and_options):
+           check_ids, check_terms, check_ages, check_baseline, check_chapters_all, check_tags_all, check_personality, check_completeness, check_outline_tags, check_timeline_skeleton, check_vol_ages_all, check_freeze, check_gaps, check_event_desc, check_stage_d, check_move_records, check_single_appearance, check_appearance_order, check_prose, check_cost_and_options, check_experience):
     fn()
 
 if problems:

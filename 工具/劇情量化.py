@@ -586,6 +586,25 @@ def main(argv):
             else:
                 unresolved.append(f'{v}:{re.sub(r"[|*]", "", l)[:18].strip()}')
     inv('H4 大綱「待決」表中沒有未裁定項(未標「已定」「已決」)', unresolved)
+    ratio_bad = []
+    def _in(key, val, label):
+        lo, hi, _ = bm[key]
+        if not lo <= val <= hi:
+            ratio_bad.append(f'{label} {val:.2f} 不在 {lo:g}–{hi:g}')
+    for v in ('第一部', '第二部'):
+        _in('D4', d4[v]['ratio'], f'D4 {v}')
+    _in('D5', d4['第三部']['ratio'], 'D5 第三部')
+    for v in VOLS[1:]:
+        _in('D6', d4[v]['out_run'], f'D6 {v}')
+    _in('D7', d4['第三部']['male'], 'D7 第三部')
+    _in('D8', d4['第三部']['neither'], 'D8 第三部')
+    _in('D9', tot_t / tot_n, 'D9 全書')
+    if not d4['第一部']['ratio'] > d4['第三部']['ratio'] > d4['第二部']['ratio']:
+        ratio_bad.append('形狀須為 第一部 > 第三部 > 第二部')
+    for v, nd, a, b in decl_gap:
+        if a:
+            ratio_bad.append(f'{v} 聲明同行而實測不是:第 ' + '、'.join(map(str, a)) + ' 章')
+    inv('H5 男女主同行比例(DEC-086:D4 至 D9、形狀、宏觀聲明不得多於實測)', ratio_bad)
     P(f"- 移交正文階段、不屬於劇情待決的項目:{len(handoff)} 項" + ('(' + ';'.join(handoff) + ')' if handoff else ''))
     P('\n— 以上為本工具的量測結果;「夠好」的完整驗收標準(含人工關卡)見 [劇情基準](../設計規範/劇情基準.md)。')
 

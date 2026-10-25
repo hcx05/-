@@ -12,7 +12,7 @@
 「基準區間」只讀取該檔中證據明確的條目,沒有證據的指標只列數字,不下判斷。
 
 指標分組(軟體工程視角):
-  A 規模與容量   B 耦合與依賴(角色圖)   C 狀態管理(秘密、伏筆)   D 負載與節奏
+  A 規模與容量   B 耦合與依賴(角色圖)   C 狀態管理(秘密、伏筆)   D 負載與節奏(含 D4 男女主同行與分離)
   E 難度曲線     F 需求符合度(DEC-074 主軸)   G 改編就緒度(事件契約、場景與角色視覺資料)
   H 驗收(硬不變量)
 """
@@ -30,6 +30,7 @@ COURT_KEYS = ('朝堂', '皇城', '東宮', '行在', '祭天壇', '皇宮')    
 COURT_FACTIONS = ('大昭皇室', '內侍監', '清流', '觀星監')            # 出場勢力(勢力/README 標為朝廷、宦官機構、士大夫朋黨、司天機構者)
 COURT_TAGS = ('權謀',)                                               # 標籤表:「朝堂、勢力的算計」
 EXPECTED_FIELDS = ['序號', '時間', '章節', '場景', '描述', '出場角色']
+SEP_WINDOWS = {'第二部': (33, 39), '第三部': (13, 21)}   # DEC-086 的「回報窗口」:承載會合與重逢的回報,窗口內的分離不計入連續上限
 CONTRACT_FIELDS = ['目標', '衝突', '結果']   # 改編(動畫、遊戲)需要、但目前事件描述沒有的欄位
 
 
@@ -374,6 +375,58 @@ def main(argv):
             c['雙' if has_m and has_f else '男' if has_m and '、' not in p else '女' if has_f and '、' not in p else '他'] += 1
         mx, mn = max(c['男'], c['女']), min(c['男'], c['女'])
         P(f"| {v} | {c['男']} | {c['女']} | {c['雙']} | {c['他']} | {mn / mx:.2f} |" if mx else f"| {v} | {c['男']} | {c['女']} | {c['雙']} | {c['他']} | — |")
+    P('')
+
+    # D4 男女主同行與分離(W15 / DEC-086)
+    P('### D4 男女主同行與分離(W15,DEC-086)\n')
+    P('同行章 = 該章演出事件中,男女主同場者 ≥ 一半。依事件「出場角色」計,出場欄若漏列會讓數字偏低。'
+      '回報窗口(' + '、'.join(f'{v}第 {a}–{b} 章' for v, (a, b) in SEP_WINDOWS.items()) + ')承載會合與重逢的回報,窗口內的分離不計入連續上限。\n')
+    P('| 卷 | 同行章 | 同場事件占比 | 零同場章 | 最長連續無同場章(窗口外) | 含窗口 | 男主在場事件 | 女主在場事件 | 兩人都不在場事件 |')
+    P('|---|---|---|---|---|---|---|---|---|')
+    d4 = {}
+    for v in VOLS[1:]:
+        n = chapter_count(v)
+        by_ch = collections.defaultdict(list)
+        for r in tl[v]:
+            if r['kind'] == '演出' and r['id'] in ev[v]:
+                by_ch[r['ch']].append(set(ev[v][r['id']]['chars']))
+        allev = [c for cs in by_ch.values() for c in cs]
+        co = lambda c: LEADS[0] in c and LEADS[1] in c
+        together = sum(1 for ch in range(1, n + 1) if by_ch[ch] and sum(co(c) for c in by_ch[ch]) * 2 >= len(by_ch[ch]))
+        zero = [ch for ch in range(1, n + 1) if not any(co(c) for c in by_ch[ch])]
+        win = SEP_WINDOWS.get(v)
+
+        def longest_zero(skip_window):
+            best, run, start = (0, 0, 0), 0, 0
+            for ch in range(1, n + 1):
+                if ch in zero and not (skip_window and win and win[0] <= ch <= win[1]):
+                    if run == 0:
+                        start = ch
+                    run += 1
+                    if run > best[0]:
+                        best = (run, start, ch)
+                else:
+                    run = 0
+            return best
+        out_run, all_run = longest_zero(True), longest_zero(False)
+        d4[v] = {'n': n, 'together': together, 'ratio': together / n, 'out_run': out_run[0],
+                 'male': sum(LEADS[0] in c for c in allev) / len(allev), 'female': sum(LEADS[1] in c for c in allev) / len(allev),
+                 'neither': sum(not (set(c) & set(LEADS)) for c in allev) / len(allev)}
+        P(f"| {v} | {together} / {n}({together / n:.0%}) | {sum(co(c) for c in allev) / len(allev):.0%} | {len(zero)} / {n} | "
+          f"{out_run[0]}" + (f"({out_run[1]}–{out_run[2]})" if out_run[0] else '') + f" | {all_run[0]}" + (f"({all_run[1]}–{all_run[2]})" if all_run[0] else '') +
+          f" | {d4[v]['male']:.0%} | {d4[v]['female']:.0%} | {d4[v]['neither']:.0%} |")
+    tot_t, tot_n = sum(d4[v]['together'] for v in d4), sum(d4[v]['n'] for v in d4)
+    P('')
+    for v in ('第一部', '第二部'):
+        P(f"- D4 同行章占比 · {v}:{d4[v]['ratio']:.0%} {judge('D4', d4[v]['ratio'], bm)}")
+    P(f"- D5 同行章占比 · 第三部:{d4['第三部']['ratio']:.0%} {judge('D5', d4['第三部']['ratio'], bm)}")
+    for v in VOLS[1:]:
+        P(f"- D6 最長連續無同場章(窗口外) · {v}:{d4[v]['out_run']} {judge('D6', d4[v]['out_run'], bm)}")
+    P(f"- D7 男主在場事件 · 第三部:{d4['第三部']['male']:.0%} {judge('D7', d4['第三部']['male'], bm)}")
+    P(f"- D8 兩人都不在場事件 · 第三部:{d4['第三部']['neither']:.0%} {judge('D8', d4['第三部']['neither'], bm)}")
+    P(f"- D9 全書(相遇後)同行章占比:{tot_t} / {tot_n}({tot_t / tot_n:.0%}) {judge('D9', tot_t / tot_n, bm)}")
+    order = d4['第一部']['ratio'] > d4['第三部']['ratio'] > d4['第二部']['ratio']
+    P(f"- 形狀(第一部 > 第三部 > 第二部):{'✓' if order else '✗'}({d4['第一部']['ratio']:.0%} / {d4['第三部']['ratio']:.0%} / {d4['第二部']['ratio']:.0%})")
     P('')
 
     # E 難度曲線

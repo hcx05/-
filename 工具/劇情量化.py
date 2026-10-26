@@ -491,6 +491,7 @@ def main(argv):
     P('|---|---|---|---|---|')
     court_chapters = []
     court_detail = collections.defaultdict(list)
+    flagged = {}
     for v in VOLS:
         evs = [r for r in tl[v] if r['kind'] == '演出']
 
@@ -500,6 +501,7 @@ def main(argv):
                 + [f for f in e['facs'] if f in COURT_FACTIONS]
             return '、'.join(dict.fromkeys(why))
         n_c = sum(bool(courty(r)) for r in evs)
+        flagged[v] = {r['id'] for r in evs if courty(r)}
         per = collections.defaultdict(lambda: [0, 0])
         for r in evs:
             per[r['ch']][1] += 1
@@ -521,6 +523,39 @@ def main(argv):
     for v, ch, t, a, b in court_chapters:
         P(f"| {v}·第 {ch} 章 | {t} | {a} / {b} | {ruled.get((v, ch), '待裁定')} |")
     P(f"\n已裁定 {sum((v, ch) in ruled for v, ch, *_ in court_chapters)} / {len(court_chapters)} 章(正本:設計規範/DEC-074裁定表.md)。")
+    P('')
+
+    # F2 朝堂戲(逐事件分類;DEC-090)
+    P('### F2 朝堂戲占比(逐事件分類,正本:設計規範/朝堂分類.md)\n')
+    P('F1 把「發生在京城或行在的江湖戲」也算進去,會高估廟堂的分量。F2 只計分類為「朝堂戲」的演出事件(朝臣、皇室、政變或朝議是事件主體);「軍政」單列不計。\n')
+    cls = {}
+    for c in table(read('設計規範/朝堂分類.md')):
+        if len(c) >= 4 and re.fullmatch(r'P\d-\d+', c[0]):
+            cls[c[0]] = c[3]
+    P('| 卷 | 演出事件 | 朝堂戲 | 占比 | 軍政 | 京城江湖戲 | 朝堂戲過半的章 | 最長連續朝堂戲過半章 | 未分類 |')
+    P('|---|---|---|---|---|---|---|---|---|')
+    f2 = {}
+    for v in VOLS[1:]:
+        evs = [r for r in tl[v] if r['kind'] == '演出']
+        cc = collections.Counter(cls.get(r['id'], '') for r in evs if r['id'] in flagged[v])
+        miss = sorted(i for i in flagged[v] if i not in cls)
+        per = collections.defaultdict(lambda: [0, 0])
+        for r in evs:
+            per[r['ch']][1] += 1
+            per[r['ch']][0] += cls.get(r['id']) == '朝堂戲'
+        hv = sorted(ch for ch, (a, b) in per.items() if b and a * 2 >= b)
+        run = best = 0
+        prev = None
+        for ch in hv:
+            run = run + 1 if prev is not None and ch == prev + 1 else 1
+            best = max(best, run)
+            prev = ch
+        f2[v] = {'share': cc['朝堂戲'] / max(1, len(evs)), 'n': cc['朝堂戲'], 'miss': miss, 'heavy': hv, 'run': best}
+        P(f"| {v} | {len(evs)} | {cc['朝堂戲']} | {cc['朝堂戲'] / max(1, len(evs)):.1%} | {cc['軍政']} | {cc['京城江湖戲']} | {len(hv)} | {best} | {len(miss)} |")
+    P('')
+    for v in VOLS[1:]:
+        P(f"- F2 朝堂戲占比 · {v}:{f2[v]['share']:.1%} {judge('F2', f2[v]['share'], bm)}")
+        P(f"- F3 最長連續朝堂戲過半章 · {v}:{f2[v]['run']} {judge('F3', f2[v]['run'], bm)}")
     P('')
 
     # G 改編就緒度
@@ -605,6 +640,15 @@ def main(argv):
         if a:
             ratio_bad.append(f'{v} 聲明同行而實測不是:第 ' + '、'.join(map(str, a)) + ' 章')
     inv('H5 男女主同行比例(DEC-086:D4 至 D9、形狀、宏觀聲明不得多於實測)', ratio_bad)
+    court_bad = []
+    for v in VOLS[1:]:
+        if f2[v]['miss']:
+            court_bad.append(f"{v} 未分類 {len(f2[v]['miss'])} 個:" + '、'.join(f2[v]['miss'][:5]))
+        for key, val, lab in (('F2', f2[v]['share'], 'F2'), ('F3', f2[v]['run'], 'F3')):
+            lo, hi, _ = bm[key]
+            if not lo <= val <= hi:
+                court_bad.append(f'{lab} {v} {val:.2f} 不在 {lo:g}–{hi:g}')
+    inv('H6 朝堂戲占比(DEC-090:F1 標出的演出事件皆已分類,F2、F3 在範圍內)', court_bad)
     P(f"- 移交正文階段、不屬於劇情待決的項目:{len(handoff)} 項" + ('(' + ';'.join(handoff) + ')' if handoff else ''))
     P('\n— 以上為本工具的量測結果;「夠好」的完整驗收標準(含人工關卡)見 [劇情基準](../設計規範/劇情基準.md)。')
 

@@ -755,9 +755,10 @@ def check_timeline_skeleton():
             add('時間線', f'{v} 事件 ID 不連號或重複')
         covered = set()
         for r in rows:
-            m = re.fullmatch(r'第 (\d+) 章', r['章節'])
+            m = re.fullmatch(r'第 (\d+) 章(\(提及\))?', r['章節'])
             if m:
-                covered.add(int(m.group(1)))
+                if not m.group(2):
+                    covered.add(int(m.group(1)))
             else:
                 add('時間線', f"{v} {r['事件 ID']} 章節欄「{r['章節']}」格式不符")
         for n in chapter_tags(outline):
